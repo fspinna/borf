@@ -1,0 +1,5 @@
+numpy==1.22.4
+numba==0.56.3
+awkward==2.0.6
+scipy==1.8.1
+scikit-learn
