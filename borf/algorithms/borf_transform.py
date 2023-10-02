@@ -2,14 +2,14 @@ import awkward as ak
 import numba as nb
 from numba import njit
 from numpy.typing import NDArray
-from ebop.algorithms.oned_nan_symbolic_aggregate_approximation import oned_nan_sax
-from ebop.algorithms.symbolic_aggregate_approximation import paa_sax
-from ebop.utils.condition_utils import (
+from borf.algorithms.oned_nan_symbolic_aggregate_approximation import oned_nan_sax
+from borf.algorithms.symbolic_aggregate_approximation import paa_sax
+from borf.utils.condition_utils import (
     is_empty,
     is_valid_windowing,
     is_window_std_negligible,
 )
-from ebop.utils.transform_utils import (
+from borf.utils.transform_utils import (
     offset_transform,
     zscore_transform,
     get_norm_bins,

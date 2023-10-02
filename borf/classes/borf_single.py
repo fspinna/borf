@@ -5,19 +5,19 @@ from scipy.sparse import csc_array, hstack
 from sklearn.base import TransformerMixin, BaseEstimator
 from typing import Union
 
-from ebop.algorithms.ebop_transform import (
+from borf.algorithms.borf_transform import (
     extract_sax_words_single_configuration,
     transform_sax_words_single_configuration,
     fit_transform_sax_words_single_configuration,
 )
-from ebop.algorithms.ebop_alignment import get_ts_alignment_idxs_from_word
-from ebop.utils.transform_utils import create_dict
-from ebop.classes.receptive_field import ReceptiveField
-from ebop.utils.condition_utils import is_empty
-from ebop.utils.transform_utils import average_groups
+from borf.algorithms.borf_alignment import get_ts_alignment_idxs_from_word
+from borf.utils.transform_utils import create_dict
+from borf.classes.receptive_field import ReceptiveField
+from borf.utils.condition_utils import is_empty
+from borf.utils.transform_utils import average_groups
 
 
-class EbopSingleTransformer(BaseEstimator, TransformerMixin):
+class BorfSingleTransformer(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         window_size: int = 4,

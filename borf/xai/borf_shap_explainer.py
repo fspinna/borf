@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
 
-from ebop.xai.ebop_explanation import (
-    EbopFeatureExplanation,
-    EbopFeatureSaliencyExplanation,
-    EbopFeaturesShapeSaliencyExplanation,
+from borf.xai.borf_explanation import (
+    BorfFeatureExplanation,
+    BorfFeatureSaliencyExplanation,
+    BorfFeaturesShapeSaliencyExplanation,
 )
-from ebop.classes.ebop_multi import EbopMultiTransformer
+from borf.classes.borf_multi import BorfMultiTransformer
 from sklearn.pipeline import make_pipeline, Pipeline
 from sklearn.base import ClassifierMixin, RegressorMixin
 from typing import Union, Optional, Literal
@@ -24,10 +24,10 @@ class Explainer(ABC):
         pass
 
 
-class EbopShapExplainer(Explainer):
+class BorfShapExplainer(Explainer):
     def __init__(
         self,
-        transformer: EbopMultiTransformer,
+        transformer: BorfMultiTransformer,
         model: Optional[Union[ClassifierMixin, RegressorMixin]] = None,
         pipeline: Optional[Pipeline] = None,
         shap_kwargs: Optional[dict] = None,
@@ -172,7 +172,7 @@ class EbopShapExplainer(Explainer):
 
         if explanation_type == "features":
             return [
-                EbopFeatureExplanation(
+                BorfFeatureExplanation(
                     x_transformed=X_transformed[i : i + 1],
                     x_pred=y[i],
                     shap_values=shap_values[i : i + 1],
@@ -193,7 +193,7 @@ class EbopShapExplainer(Explainer):
                 n_labels=n_labels,
             )
             return [
-                EbopFeatureSaliencyExplanation(
+                BorfFeatureSaliencyExplanation(
                     x_transformed=X_transformed[i : i + 1],
                     x_pred=y[i],
                     shap_values=shap_values[i : i + 1],
@@ -220,7 +220,7 @@ class EbopShapExplainer(Explainer):
                 n_features=n_features,
             )
             return [
-                EbopFeaturesShapeSaliencyExplanation(
+                BorfFeaturesShapeSaliencyExplanation(
                     x_transformed=X_transformed[i : i + 1],
                     x_pred=y[i],
                     shap_values=shap_values[i : i + 1],

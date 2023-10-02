@@ -1,8 +1,8 @@
 import numpy as np
 from numba import njit
 from numpy._typing import NDArray
-from ebop.utils.transform_utils import segment
-from ebop.utils.condition_utils import is_valid_segmentation
+from borf.utils.transform_utils import segment
+from borf.utils.condition_utils import is_valid_segmentation
 
 
 @njit(fastmath=True)

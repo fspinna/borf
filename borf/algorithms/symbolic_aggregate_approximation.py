@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray
-from ebop.algorithms.piecewise_aggregate_approximation import paa
+from borf.algorithms.piecewise_aggregate_approximation import paa
 
 
 @njit

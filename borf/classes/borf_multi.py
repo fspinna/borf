@@ -1,13 +1,13 @@
 from sklearn.base import BaseEstimator, TransformerMixin
-from ebop.classes.ebop_single import EbopSingleTransformer
-from ebop.utils.transform_utils import is_within_interval
+from borf.classes.borf_single import BorfSingleTransformer
+from borf.utils.transform_utils import is_within_interval
 from typing import Sequence, Dict
 import awkward as ak
 from scipy.sparse import hstack
 from joblib import Parallel, delayed
 
 
-class EbopMultiTransformer(BaseEstimator, TransformerMixin):
+class BorfMultiTransformer(BaseEstimator, TransformerMixin):
     def __init__(
         self,
         configs: Sequence[Dict],
@@ -57,7 +57,7 @@ class EbopMultiTransformer(BaseEstimator, TransformerMixin):
             config["word_length"],
         ]
         metadata = self.parameters_separator.join([str(par) for par in parameter])
-        transformer = EbopSingleTransformer(
+        transformer = BorfSingleTransformer(
             **config,
             strategies=self.strategies,
             use_signal_id=self.use_signal_id,
@@ -96,7 +96,7 @@ class EbopMultiTransformer(BaseEstimator, TransformerMixin):
             config["word_length"],
         ]
         metadata = self.parameters_separator.join([str(par) for par in parameter])
-        transformer = EbopSingleTransformer(
+        transformer = BorfSingleTransformer(
             **config,
             strategies=self.strategies,
             use_signal_id=self.use_signal_id,

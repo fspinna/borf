@@ -1,39 +1,39 @@
-# ebop
+# borf
 
-The `ebop` repository contains code for the Extended-Bag-Of-Patterns (EBOP)
+The `borf` repository contains code for the Extended-Bag-Of-Patterns (BORF)
 ## Installation
 
 You can install the package from source with:
 
 ```bash
-pip install -e ebop
+pip install -e borf
 ```
 
 To install extra dependencies for the notebooks and explainability, use:
 
 ```bash
-pip install -e ebop[notebooks,xai]
+pip install -e borf[notebooks,xai]
 ```
 
 ---
 ## Quick Start
 
-The `EBOP` transformer is designed to integrate seamlessly with scikit-learn's pipeline mechanism, allowing it to be used just like any other transformer. Here's a quick example to get you started:
+The `BORF` transformer is designed to integrate seamlessly with scikit-learn's pipeline mechanism, allowing it to be used just like any other transformer. Here's a quick example to get you started:
 
 ### Importing the Necessary Libraries
 
 ```python
-from ebop import EBOP
+from borf import BORF
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import make_pipeline
 ```
 
-### Creating a Generic Pipeline with EBOP
+### Creating a Generic Pipeline with BORF
 
-Create a pipeline using `EBOP` as a transformer and `LinearSVC` (or any other classifier/regressor) as the final estimator:
+Create a pipeline using `BORF` as a transformer and `LinearSVC` (or any other classifier/regressor) as the final estimator:
 
 ```python
-pipe = make_pipeline(EBOP(), LinearSVC())
+pipe = make_pipeline(BORF(), LinearSVC())
 ```
 
 ### Training and Scoring
@@ -45,7 +45,7 @@ pipe.fit(X_train, y_train)
 score = pipe.score(X_test, y_test)
 ```
 
-The `EBOP` transformer's integration with the standard pipeline ensures a consistent and easy-to-use interface, making it a flexible tool for various machine learning tasks.
+The `BORF` transformer's integration with the standard pipeline ensures a consistent and easy-to-use interface, making it a flexible tool for various machine learning tasks.
 
 For more specific examples on classification and regression, please refer to the detailed sections below.
 
@@ -56,7 +56,7 @@ For more specific examples on classification and regression, please refer to the
 ### Importing the Required Modules
 
 ```python
-from ebop import EBOP
+from borf import BORF
 from downtime import load_dataset
 from sklearn.svm import LinearSVC, LinearSVR
 from sklearn.pipeline import make_pipeline
@@ -72,10 +72,10 @@ X_train, y_train, X_test, y_test = d()
 print(d)
 ```
 
-Create and fit the pipeline with EBOP and LinearSVC:
+Create and fit the pipeline with BORF and LinearSVC:
 
 ```python
-pipe = make_pipeline(EBOP(n_jobs=-1), LinearSVC())
+pipe = make_pipeline(BORF(n_jobs=-1), LinearSVC())
 pipe.fit(X_train, y_train)
 ```
 
@@ -95,10 +95,10 @@ X_train, y_train, X_test, y_test = d()
 print(d)
 ```
 
-Create and fit the pipeline with EBOP and LinearSVR:
+Create and fit the pipeline with BORF and LinearSVR:
 
 ```python
-pipe = make_pipeline(EBOP(n_jobs=-1), LinearSVR())
+pipe = make_pipeline(BORF(n_jobs=-1), LinearSVR())
 pipe.fit(X_train, y_train)
 ```
 

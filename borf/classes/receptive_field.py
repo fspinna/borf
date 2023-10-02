@@ -1,8 +1,8 @@
 import awkward as ak
 import numpy as np
-from ebop.algorithms.ebop_alignment import get_ts_alignment_idxs_from_word
-from ebop.utils.transform_utils import zscore_transform
-from ebop.utils.condition_utils import is_empty
+from borf.algorithms.borf_alignment import get_ts_alignment_idxs_from_word
+from borf.utils.transform_utils import zscore_transform
+from borf.utils.condition_utils import is_empty
 
 
 class ReceptiveField:

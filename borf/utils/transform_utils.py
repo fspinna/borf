@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import numpy as np
 from numba import njit, vectorize
 from numpy.typing import NDArray
-from ebop.utils.condition_utils import is_empty, is_valid_segmentation
+from borf.utils.condition_utils import is_empty, is_valid_segmentation
 
 
 @njit

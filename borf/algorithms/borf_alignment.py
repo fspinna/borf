@@ -1,7 +1,7 @@
 import numpy as np
-from ebop.algorithms.ebop_transform import normalize, apply_sax
-from ebop.utils.condition_utils import is_valid_windowing, is_empty
-from ebop.utils.transform_utils import get_norm_bins, pad
+from borf.algorithms.borf_transform import normalize, apply_sax
+from borf.utils.condition_utils import is_valid_windowing, is_empty
+from borf.utils.transform_utils import get_norm_bins, pad
 
 
 def get_signal_alignment_idxs_from_word(

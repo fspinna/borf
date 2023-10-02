@@ -1,10 +1,10 @@
-from ebop.classes.ebop_multi import EbopMultiTransformer
-from ebop.algorithms.ebop_heuristic import heuristic_function
+from borf.classes.borf_multi import BorfMultiTransformer
+from borf.algorithms.borf_heuristic import heuristic_function
 from typing import Literal, Optional
 import awkward as ak
 
 
-class EbopAutoTransformer(EbopMultiTransformer):
+class BorfAutoTransformer(BorfMultiTransformer):
     def __init__(
         self,
         time_series_min_length: Optional[int] = None,

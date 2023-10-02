@@ -3,10 +3,10 @@ from numba import njit
 from numpy.typing import NDArray
 from typing import Tuple
 
-from ebop.algorithms.least_squares_nan import linear_regression
-from ebop.algorithms.symbolic_aggregate_approximation import digitize
-from ebop.utils.condition_utils import is_valid_segmentation
-from ebop.utils.transform_utils import segment
+from borf.algorithms.least_squares_nan import linear_regression
+from borf.algorithms.symbolic_aggregate_approximation import digitize
+from borf.utils.condition_utils import is_valid_segmentation
+from borf.utils.transform_utils import segment
 
 
 @njit

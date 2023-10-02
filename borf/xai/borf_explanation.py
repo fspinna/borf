@@ -13,7 +13,7 @@ class Explanation(ABC):
     pass
 
 
-class EbopFeatureExplanation(Explanation):
+class BorfFeatureExplanation(Explanation):
     def __init__(
         self,
         x_transformed,
@@ -93,7 +93,7 @@ class EbopFeatureExplanation(Explanation):
         )
 
 
-class EbopFeatureSaliencyExplanation(EbopFeatureExplanation):
+class BorfFeatureSaliencyExplanation(BorfFeatureExplanation):
     def __init__(
         self,
         x,
@@ -165,7 +165,7 @@ class EbopFeatureSaliencyExplanation(EbopFeatureExplanation):
         )
 
 
-class EbopFeaturesShapeSaliencyExplanation(EbopFeatureSaliencyExplanation):
+class BorfFeaturesShapeSaliencyExplanation(BorfFeatureSaliencyExplanation):
     def __init__(
         self,
         x,

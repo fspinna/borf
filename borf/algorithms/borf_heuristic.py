@@ -1,10 +1,10 @@
 import itertools
 import numpy as np
-from ebop.utils.condition_utils import is_valid_windowing, is_empty
+from borf.utils.condition_utils import is_valid_windowing, is_empty
 from typing import Literal
 
 
-def get_ebop_params(
+def get_borf_params(
     time_series_min_length,
     time_series_max_length,
     window_size_min_window_size=4,
@@ -240,7 +240,7 @@ def heuristic_function(
     dilations_max_dilation=None,
     complexity: Literal["quadratic", "linear_logarithmic"] = "quadratic",
 ):
-    params = get_ebop_params(
+    params = get_borf_params(
         time_series_min_length=time_series_min_length,
         time_series_max_length=time_series_max_length,
         window_size_min_window_size=window_size_min_window_size,
