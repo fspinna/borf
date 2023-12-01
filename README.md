@@ -3,7 +3,7 @@
 The `borf` repository contains code for the Extended-Bag-Of-Patterns (BORF)
 ## Installation
 
-You can install the package from source with:
+You can install the package from github with:
 
 ```bash
 pip install git+https://github.com/fspinna/borf
