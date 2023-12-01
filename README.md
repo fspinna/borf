@@ -6,13 +6,13 @@ The `borf` repository contains code for the Extended-Bag-Of-Patterns (BORF)
 You can install the package from source with:
 
 ```bash
-pip install -e borf
+pip install git+https://github.com/fspinna/borf
 ```
 
 To install extra dependencies for the notebooks and explainability, use:
 
 ```bash
-pip install -e borf[notebooks,xai]
+pip install git+https://github.com/fspinna/borf#egg=borf[notebooks,xai]
 ```
 
 ---
