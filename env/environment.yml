@@ -1,0 +1,23 @@
+name: borf
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - numba::numba
+  - awkward>=1.10.3
+  - numpy
+  - scikit-learn
+  - scipy
+  - notebook  # for notebooks
+  - matplotlib
+  - seaborn
+  - shap
+  - pip
+  - pip:
+    - wheel
+    - sparse
+    - downtime
+    - plottime
+    - pytest  # for tests
+    - pytest-cov  # for tests
