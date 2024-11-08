@@ -6,10 +6,17 @@ from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
 from fast_borf.xai.receptive_field import ReceptiveField
 import pandas as pd
 from scipy.stats import rankdata
+from typing import Optional, Literal
 
 
 class BagOfReceptiveFields:
-    def __init__(self, borf: FeatureUnion, borf_position=0, reshaper_position=1, zero_columns_remover_position=2):
+    def __init__(
+        self,
+        borf: FeatureUnion,
+        borf_position=0,
+        reshaper_position=1,
+        zero_columns_remover_position=2,
+    ):
         self.borf = borf
         self.borf_position = borf_position
         self.reshaper_position = reshaper_position
@@ -17,10 +24,12 @@ class BagOfReceptiveFields:
         self.mapping = map_borf_to_conf(
             borf=self.borf,
             reshaper_position=reshaper_position,
-            zero_columns_remover_position=zero_columns_remover_position
+            zero_columns_remover_position=zero_columns_remover_position,
         )
-        self.configs = [transformer[self.borf_position].get_params() for _, transformer in self.borf.transformer_list]
-
+        self.configs = [
+            transformer[self.borf_position].get_params()
+            for _, transformer in self.borf.transformer_list
+        ]
 
         self.X_ = None
         self.y_true_ = None
@@ -39,7 +48,16 @@ class BagOfReceptiveFields:
         self.receptive_fields_ = None
         self.task_ = None
 
-    def build(self, X, y_true, y_pred, task="classification"):
+    def __getitem__(self, key):
+        return self.receptive_fields_[key]
+
+    def build(
+        self,
+        X,
+        y_true=None,
+        y_pred=None,
+        task: Optional[Literal["classification", "regression"]] = None,
+    ):
         self.task_ = task
         features = np.arange(len(self.mapping))
         self.X_ = X
@@ -62,19 +80,33 @@ class BagOfReceptiveFields:
                 assert F[0].shape[0] == len(self.X_)
                 assert F[0].shape[1] == len(self.mapping)
             else:
-                raise ValueError('F should be 2D or 3D array')
-            self.F_ = F[self.y_pred_, np.arange(F.shape[1]), :]  # only the importance toward predicted class
+                raise ValueError("F should be 2D or 3D array")
+            self.F_ = F[
+                self.y_pred_, np.arange(F.shape[1]), :
+            ]  # only the importance toward predicted class
 
         elif self.task_ == "regression":
             assert F.shape[0] == len(self.X_)
             assert F.shape[1] == len(self.mapping)
             self.F_ = F
-        self.F_argsort_ = np.argsort(-np.abs(self.F_), axis=1)  # for each instance, feature idxs sorted by abs imp
-        self.F_sum_ = np.abs(self.F_).sum(axis=0)  # sum of abs importance (global importance across instances)
-        self.F_sum_argsort_ = np.argsort(-self.F_sum_)  # feature idxs sorted by global abs sum
-        self.F_rank_ = rankdata(-np.abs(self.F_), axis=1)  # for each instance, feature ranks by abs imp
-        self.F_avg_rank_ = np.mean(self.F_rank_, axis=0)  # average rank across instances (global importance)
-        self.F_avg_rank_argsort_ = np.argsort(self.F_avg_rank_)  # feature idxs sorted by global avg rank
+        self.F_argsort_ = np.argsort(
+            -np.abs(self.F_), axis=1
+        )  # for each instance, feature idxs sorted by abs imp
+        self.F_sum_ = np.abs(self.F_).sum(
+            axis=0
+        )  # sum of abs importance (global importance across instances)
+        self.F_sum_argsort_ = np.argsort(
+            -self.F_sum_
+        )  # feature idxs sorted by global abs sum
+        self.F_rank_ = rankdata(
+            -np.abs(self.F_), axis=1
+        )  # for each instance, feature ranks by abs imp
+        self.F_avg_rank_ = np.mean(
+            self.F_rank_, axis=0
+        )  # average rank across instances (global importance)
+        self.F_avg_rank_argsort_ = np.argsort(
+            self.F_avg_rank_
+        )  # feature idxs sorted by global avg rank
         # importance
         for feature, receptive_field in self.receptive_fields_.items():
             receptive_field.feature_importance = self.F_[:, feature]
@@ -88,10 +120,12 @@ class BagOfReceptiveFields:
             receptive_field.feature_importance_norm = F_norm[:, feature]
         return self
 
-    def map_contained_single_feature_importance_to_saliency(self, idx, count_overlapping=True, normalize=True):
-        X_single = self.X_[idx:idx+1]
-        F_single = self.F_[idx:idx+1]
-        ts_transformed = self.X_transformed_[idx:idx+1]
+    def map_contained_single_feature_importance_to_saliency(
+        self, idx, count_overlapping=True, normalize=True
+    ):
+        X_single = self.X_[idx : idx + 1]
+        F_single = self.F_[idx : idx + 1]
+        ts_transformed = self.X_transformed_[idx : idx + 1]
         positive_features = np.argwhere(ts_transformed > 0)[:, 1]
         S_single = np.zeros_like(X_single)
         if F_single.sum() == 0:
@@ -99,19 +133,29 @@ class BagOfReceptiveFields:
         for receptive_field_idx in positive_features:
             receptive_field = self.receptive_fields_[receptive_field_idx]
             if count_overlapping:
-                alignments, counts = np.unique(receptive_field.alignments[idx], return_counts=True)
+                alignments, counts = np.unique(
+                    receptive_field.alignments[idx], return_counts=True
+                )
             else:
                 alignments = np.unique(receptive_field.alignments[idx])
                 counts = np.ones_like(alignments)
-            S_single[0, receptive_field.signal_idx, alignments] += receptive_field.feature_importance[idx] * counts
+            S_single[0, receptive_field.signal_idx, alignments] += (
+                receptive_field.feature_importance[idx] * counts
+            )
         if normalize:
-            S_single = S_single / (S_single.sum() / np.sum(F_single[:, positive_features]))
+            S_single = S_single / (
+                S_single.sum() / np.sum(F_single[:, positive_features])
+            )
         return S_single
 
-    def map_contained_feature_importance_to_saliency(self, count_overlapping=True, normalize=True):
+    def map_contained_feature_importance_to_saliency(
+        self, count_overlapping=True, normalize=True
+    ):
         S = list()
         for i in range(len(self.X_)):
-            S_single = self.map_contained_single_feature_importance_to_saliency(i, count_overlapping, normalize)
+            S_single = self.map_contained_single_feature_importance_to_saliency(
+                i, count_overlapping, normalize
+            )
             S.append(S_single)
         self.S_ = np.vstack(S)
         return self
@@ -134,21 +178,24 @@ class BagOfReceptiveFields:
     #     #             np.nansum(np.array(word_lengths) * F_single_norm[:, null_features].ravel()))
     #     return F_single_norm
 
-
     def map_single_notcontained_feature_importance(self, idx):
-        F_single = self.F_[idx:idx + 1]
-        ts_transformed = self.X_transformed_[idx:idx + 1]
+        F_single = self.F_[idx : idx + 1]
+        ts_transformed = self.X_transformed_[idx : idx + 1]
         null_features = np.argwhere(ts_transformed == 0)[:, 1]
         null_features_sum = np.sum(F_single[:, null_features])
         F_sum = 0
         window_sizes = list()
         for null_feature in null_features:
-            feature_importance = self.receptive_fields_[null_feature].feature_importance[idx]
+            feature_importance = self.receptive_fields_[
+                null_feature
+            ].feature_importance[idx]
             window_size = self.receptive_fields_[null_feature].window_size
             window_sizes.append(window_size)
             F_sum += feature_importance * window_size
         F_single_norm = np.full_like(F_single, np.nan)
-        F_single_norm[:, null_features] = F_single[:, null_features] * null_features_sum / F_sum
+        F_single_norm[:, null_features] = (
+            F_single[:, null_features] * null_features_sum / F_sum
+        )
         # np.allclose(F_single[:, null_features].sum(),
         #             np.nansum(np.array(word_lengths) * F_single_norm[:, null_features].ravel()))
         return F_single_norm
@@ -165,8 +212,10 @@ class BagOfReceptiveFields:
         if idxs is None:
             idxs = np.arange(len(self.X_))
         absolute_importance = np.abs(self.F_[idxs]).sum(axis=0)
-        mapping_df = pd.DataFrame(self.mapping, columns=['conf_idx', 'signal_idx', 'word_idx'])
-        mapping_df['feature_importance'] = absolute_importance
+        mapping_df = pd.DataFrame(
+            self.mapping, columns=["conf_idx", "signal_idx", "word_idx"]
+        )
+        mapping_df["feature_importance"] = absolute_importance
         return mapping_df
 
     def get_most_important_not_contained_patterns_by_signal(self, i):
@@ -239,15 +288,17 @@ class BagOfReceptiveFields:
         return sorted_indices_by_signal
 
 
-def build_receptive_fields(X, X_transformed, features, configs, mapping, feature_importance=None):
+def build_receptive_fields(
+    X, X_transformed, features, configs, mapping, feature_importance=None
+):
     sax_converted_X = wsax_configurations_alignment_conversion(X, configs)
     # X_transformed = self.borf.transform(X)
     X_receptive_fields = dict()
     for feature in features:
         conf_idx, signal_idx, word_idx = mapping[feature]
         config = configs[conf_idx]
-        word_length = config['word_length']
-        window_size = config['window_size']
+        word_length = config["word_length"]
+        window_size = config["window_size"]
         ts_receptive_fields_alignments = list()
         ts_receptive_fields_mappings = list()
         for i in range(len(X)):
@@ -256,28 +307,28 @@ def build_receptive_fields(X, X_transformed, features, configs, mapping, feature
                 ts_receptive_fields_alignments.append(align)
                 ts_receptive_fields_mappings.append(np.array(X[i, signal_idx][align]))
             else:
-                ts_receptive_fields_alignments.append(np.empty((0, word_length, window_size//word_length),
-                                                               dtype=np.int_))
-                ts_receptive_fields_mappings.append(np.empty((0, word_length, window_size//word_length),
-                                                               dtype=np.int_))
+                ts_receptive_fields_alignments.append(
+                    np.empty(
+                        (0, word_length, window_size // word_length), dtype=np.int_
+                    )
+                )
+                ts_receptive_fields_mappings.append(
+                    np.empty(
+                        (0, word_length, window_size // word_length), dtype=np.int_
+                    )
+                )
         receptive_field = ReceptiveField(
             compressed_word_int=word_idx,
             signal_idx=signal_idx,
             conf_idx=conf_idx,
             feature_idx=feature,
             feature_values=X_transformed[:, feature].toarray().ravel(),
-            feature_importance=feature_importance[:, feature] if feature_importance is not None else None,
+            feature_importance=feature_importance[:, feature]
+            if feature_importance is not None
+            else None,
             alignments=ts_receptive_fields_alignments,
             mappings=ts_receptive_fields_mappings,
             **config
         )
         X_receptive_fields[feature] = receptive_field
     return X_receptive_fields, sax_converted_X
-
-
-
-
-
-
-
-
