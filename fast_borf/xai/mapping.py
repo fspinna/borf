@@ -65,7 +65,7 @@ class BagOfReceptiveFields:
         self.y_pred_ = y_pred
         self.X_transformed_ = self.borf.transform(X)
         self.receptive_fields_, self.X_sax_ = build_receptive_fields(
-            X, self.X_transformed_, features, self.configs, self.mapping
+            X=X, X_transformed=self.X_transformed_, features=features, configs=self.configs, mapping=self.mapping
         )
         return self
 
@@ -106,8 +106,7 @@ class BagOfReceptiveFields:
         )  # average rank across instances (global importance)
         self.F_avg_rank_argsort_ = np.argsort(
             self.F_avg_rank_
-        )  # feature idxs sorted by global avg rank
-        # importance
+        )  # feature idxs sorted by global avg rank importance
         for feature, receptive_field in self.receptive_fields_.items():
             receptive_field.feature_importance = self.F_[:, feature]
         return self
@@ -128,7 +127,7 @@ class BagOfReceptiveFields:
         ts_transformed = self.X_transformed_[idx : idx + 1]
         positive_features = np.argwhere(ts_transformed > 0)[:, 1]
         S_single = np.zeros_like(X_single)
-        if F_single.sum() == 0:
+        if F_single.sum() == 0:  # if all feature importance are zero
             return S_single
         for receptive_field_idx in positive_features:
             receptive_field = self.receptive_fields_[receptive_field_idx]
