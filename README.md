@@ -1,4 +1,12 @@
 # BORF
+
+BORF is now available in the aeon library!
+
+https://www.aeon-toolkit.org/en/stable/api_reference/auto_generated/aeon.transformations.collection.dictionary_based.BORF.html
+
+For a more customizable estimator and for XAI, continue below.
+
+
 ## Installation
 Install the package using pip by navigating to the directory containing `setup.py` and running:
 ```bash
