@@ -1,13 +1,27 @@
 from fast_borf.xai.utils import int_to_array_new_base
 import numpy as np
 
+
 class ReceptiveField:
     def __init__(
-            self,
-            compressed_word_int,
-            signal_idx, word_length, window_size, dilation, stride, alphabet_size,
-            min_window_to_signal_std_ratio, conf_idx=None, feature_idx=None, feature_values=None, alignments=None,
-            mappings=None, feature_importance=None, class_labels=None, signal_labels=None, **kwargs
+        self,
+        compressed_word_int,
+        signal_idx,
+        word_length,
+        window_size,
+        dilation,
+        stride,
+        alphabet_size,
+        min_window_to_signal_std_ratio,
+        conf_idx=None,
+        feature_idx=None,
+        feature_values=None,
+        alignments=None,
+        mappings=None,
+        feature_importance=None,
+        class_labels=None,
+        signal_labels=None,
+        **kwargs,
     ):
         self.compressed_word_int = compressed_word_int
         self.signal_idx = signal_idx
@@ -28,8 +42,12 @@ class ReceptiveField:
         self.signal_labels = signal_labels
 
         self.plot_idx = np.arange(self.window_size * self.dilation, step=self.dilation)
-        self.word_array = int_to_array_new_base(self.compressed_word_int, self.alphabet_size, self.word_length)
+        self.word_array = int_to_array_new_base(
+            self.compressed_word_int, self.alphabet_size, self.word_length
+        )
 
-
-
-
+    def __str__(self):
+        return (
+            f"{self.word_array} - (signal:{self.signal_idx}, window_size:{self.window_size}, word_length:"
+            f"{self.word_length}, dilation:{self.dilation}, stride:{self.stride})"
+        )

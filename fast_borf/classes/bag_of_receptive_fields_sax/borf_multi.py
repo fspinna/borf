@@ -22,6 +22,7 @@ class BorfPipelineBuilder:
         transformer_weights=None,
         pipeline_objects: Optional[Sequence[Tuple]] = None,
         complexity: Literal['quadratic', "linear"] = 'quadratic',
+        configs: Optional[Sequence[Dict]] = None,
 ):
         self.window_size_min_window_size = window_size_min_window_size
         self.window_size_max_window_size = window_size_max_window_size
@@ -40,29 +41,38 @@ class BorfPipelineBuilder:
 
         self.time_series_min_length_ = None
         self.time_series_max_length_ = None
-        self.configs_ = None
+        self.configs_ = configs
 
     def build(self, X):
-        self.time_series_max_length_ = ak.max(ak.ravel(ak.count(X, axis=2)))
-        self.time_series_min_length_ = ak.min(ak.ravel(ak.count(X, axis=2)))
-        pipe, self.configs_ = build_pipeline_auto(
-            time_series_min_length=self.time_series_min_length_,
-            time_series_max_length=self.time_series_max_length_,
-            window_size_min_window_size=self.window_size_min_window_size,
-            window_size_max_window_size=self.window_size_max_window_size,
-            word_lengths_n_word_lengths=self.word_lengths_n_word_lengths,
-            alphabets_min_symbols=self.alphabets_min_symbols,
-            alphabets_max_symbols=self.alphabets_max_symbols,
-            alphabets_step=self.alphabets_step,
-            dilations_min_dilation=self.dilations_min_dilation,
-            dilations_max_dilation=self.dilations_max_dilation,
-            min_window_to_signal_std_ratio=self.min_window_to_signal_std_ratio,
-            n_jobs=self.n_jobs,
-            n_jobs_numba=self.n_jobs_numba,
-            transformer_weights=self.transformer_weights,
-            pipeline_objects=self.pipeline_objects,
-            complexity=self.complexity,
-        )
+        if self.configs_ is None:
+            self.time_series_max_length_ = ak.max(ak.ravel(ak.count(X, axis=2)))
+            self.time_series_min_length_ = ak.min(ak.ravel(ak.count(X, axis=2)))
+            pipe, self.configs_ = build_pipeline_auto(
+                time_series_min_length=self.time_series_min_length_,
+                time_series_max_length=self.time_series_max_length_,
+                window_size_min_window_size=self.window_size_min_window_size,
+                window_size_max_window_size=self.window_size_max_window_size,
+                word_lengths_n_word_lengths=self.word_lengths_n_word_lengths,
+                alphabets_min_symbols=self.alphabets_min_symbols,
+                alphabets_max_symbols=self.alphabets_max_symbols,
+                alphabets_step=self.alphabets_step,
+                dilations_min_dilation=self.dilations_min_dilation,
+                dilations_max_dilation=self.dilations_max_dilation,
+                min_window_to_signal_std_ratio=self.min_window_to_signal_std_ratio,
+                n_jobs=self.n_jobs,
+                n_jobs_numba=self.n_jobs_numba,
+                transformer_weights=self.transformer_weights,
+                pipeline_objects=self.pipeline_objects,
+            )
+        else:
+            pipe = build_pipeline(
+                configs=self.configs_,
+                min_window_to_signal_std_ratio=self.min_window_to_signal_std_ratio,
+                n_jobs=self.n_jobs,
+                n_jobs_numba=self.n_jobs_numba,
+                transformer_weights=self.transformer_weights,
+                pipeline_objects=self.pipeline_objects,
+            )
         return pipe
 
 
