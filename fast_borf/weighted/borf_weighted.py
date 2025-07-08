@@ -1,16 +1,14 @@
-import numpy as np
 import numba as nb
-from fast_borf.weighted.symbolic_aggregate_approximation_weighted import sax
-from fast_borf.utils import (
-    get_norm_bins,
-    are_window_size_and_dilation_compatible_with_signal_length,
-)
-from fast_borf.bag_of_patterns.utils import (
-    ndindex_2d_array,
-)
+import numpy as np
 
+from fast_borf.bop_utils import ndindex_2d_array
 from fast_borf.hash_unique import unique
-from fast_borf.bag_of_patterns.borf_new_new_sax import sax_words_to_int
+from fast_borf.sax_utils import sax_words_to_int
+from fast_borf.utils import (
+    are_window_size_and_dilation_compatible_with_signal_length,
+    get_norm_bins,
+)
+from fast_borf.weighted.symbolic_aggregate_approximation_weighted import sax
 
 
 @nb.njit(cache=True)
@@ -71,14 +69,14 @@ def new_transform_single_conf(
 
 @nb.njit(parallel=True, nogil=True, cache=True)
 def transform_sax_patterns(
-        panel,  # shape (n_ts, n_signals, n_obs)
-        panel_timestamps,  # shape (n_ts, 1, n_obs)
-        window_size,
-        word_length,
-        alphabet_size,
-        stride,
-        dilation,
-        min_window_to_signal_std_ratio=0.0,
+    panel,  # shape (n_ts, n_signals, n_obs)
+    panel_timestamps,  # shape (n_ts, 1, n_obs)
+    window_size,
+    word_length,
+    alphabet_size,
+    stride,
+    dilation,
+    min_window_to_signal_std_ratio=0.0,
 ):
     bins = get_norm_bins(alphabet_size=alphabet_size)
     n_signals = len(panel[0])
@@ -93,10 +91,11 @@ def transform_sax_patterns(
         signal = signal[~is_nan]
         signal_timestamps = signal_timestamps[~is_nan]
         if not are_window_size_and_dilation_compatible_with_signal_length(
-                window_size, dilation, signal.size
+            window_size, dilation, signal.size
         ):
             continue
-        counts[i+1] = len(new_transform_single_conf(
+        counts[i + 1] = len(
+            new_transform_single_conf(
                 a=signal,
                 timestamps=signal_timestamps,
                 ts_idx=ts_idx,
@@ -107,7 +106,9 @@ def transform_sax_patterns(
                 bins=bins,
                 dilation=dilation,
                 stride=stride,
-                min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,))
+                min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
+            )
+        )
     cum_counts = np.cumsum(counts)
     n_rows = np.sum(counts)
     shape = (n_rows, 4)
@@ -121,7 +122,7 @@ def transform_sax_patterns(
         signal = signal[~is_nan]
         signal_timestamps = signal_timestamps[~is_nan]
         if not are_window_size_and_dilation_compatible_with_signal_length(
-                window_size, dilation, signal.size
+            window_size, dilation, signal.size
         ):
             continue
         out_ = new_transform_single_conf(
@@ -137,5 +138,5 @@ def transform_sax_patterns(
             stride=stride,
             min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
         )
-        out[cum_counts[i]:cum_counts[i+1], :] = out_
+        out[cum_counts[i] : cum_counts[i + 1], :] = out_
     return out

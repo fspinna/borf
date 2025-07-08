@@ -1,6 +1,9 @@
 import numba as nb
 import numpy as np
-from fast_borf.piecewise_aggregate_approximation.piecewise_aggregate_approximation_dilated import paa
+
+from fast_borf._deprecated.piecewise_aggregate_approximation.piecewise_aggregate_approximation_dilated import (
+    paa,
+)
 
 
 @nb.njit

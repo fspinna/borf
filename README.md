@@ -13,10 +13,9 @@ from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import RidgeClassifier
 import numpy as np
 from fast_borf import BorfBuilder
-from fast_borf.pipeline.zero_columns_remover import ZeroColumnsRemover
-from fast_borf.pipeline.reshaper import ReshapeTo2D
-from fast_borf.pipeline.to_scipy import ToScipySparse
-
+from fast_borf.pipeline import ZeroColumnsRemover
+from fast_borf.pipeline import ReshapeTo2D
+from fast_borf.pipeline import ToScipySparse
 
 # Create a dummy dataset
 X = np.random.rand(10, 1, 100)

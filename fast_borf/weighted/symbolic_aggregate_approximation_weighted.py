@@ -2,13 +2,11 @@ import numba as nb
 import numpy as np
 
 from fast_borf.utils import get_n_windows
-from fast_borf.zscore import zscore_threshold
 from fast_borf.weighted.moving import (
-    weighted_running_moving_average_textbook,
-    weighted_running_moving_standard_deviation_welford,
     weighted_moving_average_textbook,
     weighted_moving_standard_deviation_welford,
 )
+from fast_borf.zscore import zscore_threshold
 
 
 @nb.njit(cache=True)

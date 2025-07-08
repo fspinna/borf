@@ -1,7 +1,8 @@
 import numba as nb
 import numpy as np
-from fast_borf.utils import get_n_windows
+
 from fast_borf.moving import move_mean, move_std
+from fast_borf.utils import get_n_windows
 from fast_borf.zscore import zscore_threshold
 
 # import llvmlite.binding as llvm
@@ -35,8 +36,6 @@ def fast_digitize(value, bins):
     return len(bins)
 
 
-
-
 @nb.njit
 def sax_opt(
     a,
@@ -47,38 +46,56 @@ def sax_opt(
     dilation=1,
     min_window_to_signal_std_ratio=0.0,
 ):
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_windows_moving = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_windows_moving = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation
+    )
     global_std = np.std(a)
     if global_std == 0:
         return np.zeros((n_windows, word_length), dtype=np.uint8)
     seg_size = window_size // word_length
-    n_segments = get_n_windows(sequence_size=a.size, window_size=seg_size, dilation=dilation)
+    n_segments = get_n_windows(
+        sequence_size=a.size, window_size=seg_size, dilation=dilation
+    )
     window_means = np.full(n_windows_moving, np.nan)
     window_stds = np.full(n_windows_moving, np.nan)
     out = np.zeros((n_windows, word_length))
     if is_better_naive(m=n_windows, w=word_length, l=word_length):
         for d in range(dilation):
-            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
+            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
         for i in range(n_windows):
             for j in range(word_length):
                 out_i_j = 0
                 for k in range(seg_size):
-                    out_i_j += a[(i * stride) + (j * seg_size * dilation) + (k * dilation)]
+                    out_i_j += a[
+                        (i * stride) + (j * seg_size * dilation) + (k * dilation)
+                    ]
                 out[i, j] = zscore_threshold(
                     a=out_i_j / seg_size,
                     mu=window_means[i * stride],
                     sigma=window_stds[i * stride],
                     sigma_global=global_std,
-                    sigma_threshold=min_window_to_signal_std_ratio
+                    sigma_threshold=min_window_to_signal_std_ratio,
                 )
     else:
         segment_means = np.full(n_segments, np.nan)
         for d in range(dilation):
-            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
-            segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1:]
+            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[
+                seg_size - 1 :
+            ]
         out = np.zeros((n_windows, word_length))
         for i in range(n_windows):
             for j in range(word_length):
@@ -87,10 +104,9 @@ def sax_opt(
                     mu=window_means[i * stride],
                     sigma=window_stds[i * stride],
                     sigma_global=global_std,
-                    sigma_threshold=min_window_to_signal_std_ratio
+                    sigma_threshold=min_window_to_signal_std_ratio,
                 )
     return np.digitize(out, bins).astype(np.uint8)
-
 
 
 @nb.njit
@@ -103,20 +119,30 @@ def sax_opt_simple(
     dilation=1,
     min_window_to_signal_std_ratio=0.0,
 ):
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_windows_moving = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_windows_moving = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation
+    )
     global_std = np.std(a)
     if global_std == 0:
         return np.zeros((n_windows, word_length), dtype=np.uint8)
     seg_size = window_size // word_length
-    n_segments = get_n_windows(sequence_size=a.size, window_size=seg_size, dilation=dilation)
+    n_segments = get_n_windows(
+        sequence_size=a.size, window_size=seg_size, dilation=dilation
+    )
     window_means = np.full(n_windows_moving, np.nan)
     window_stds = np.full(n_windows_moving, np.nan)
     out = np.zeros((n_windows, word_length))
     if seg_size == 1:
         for d in range(dilation):
-            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
+            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
         for i in range(n_windows):
             for j in range(word_length):
                 out[i, j] = zscore_threshold(
@@ -124,14 +150,20 @@ def sax_opt_simple(
                     mu=window_means[i * stride],
                     sigma=window_stds[i * stride],
                     sigma_global=global_std,
-                    sigma_threshold=min_window_to_signal_std_ratio
+                    sigma_threshold=min_window_to_signal_std_ratio,
                 )
     else:
         segment_means = np.full(n_segments, np.nan)
         for d in range(dilation):
-            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
-            segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1:]
+            window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+                window_size - 1 :
+            ]
+            segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[
+                seg_size - 1 :
+            ]
         out = np.zeros((n_windows, word_length))
         for i in range(n_windows):
             for j in range(word_length):
@@ -140,7 +172,7 @@ def sax_opt_simple(
                     mu=window_means[i * stride],
                     sigma=window_stds[i * stride],
                     sigma_global=global_std,
-                    sigma_threshold=min_window_to_signal_std_ratio
+                    sigma_threshold=min_window_to_signal_std_ratio,
                 )
     return np.digitize(out, bins).astype(np.uint8)
 
@@ -154,23 +186,34 @@ def sax(
     stride=1,
     dilation=1,
     min_window_to_signal_std_ratio=0.0,
-
 ):
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_windows_moving = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_windows_moving = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation
+    )
     global_std = np.std(a)
     if global_std == 0:
         return np.zeros((n_windows, word_length), dtype=np.uint8)
     seg_size = window_size // word_length
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_segments = get_n_windows(sequence_size=a.size, window_size=seg_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_segments = get_n_windows(
+        sequence_size=a.size, window_size=seg_size, dilation=dilation
+    )
     segment_means = np.full(n_segments, np.nan)
     window_means = np.full(n_windows_moving, np.nan)
     window_stds = np.full(n_windows_moving, np.nan)
     for d in range(dilation):
-        window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-        window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
-        segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1:]
+        window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+            window_size - 1 :
+        ]
+        window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+            window_size - 1 :
+        ]
+        segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1 :]
     out = np.zeros((n_windows, word_length))
     for i in range(n_windows):
         for j in range(word_length):
@@ -179,7 +222,7 @@ def sax(
                 mu=window_means[i * stride],
                 sigma=window_stds[i * stride],
                 sigma_global=global_std,
-                sigma_threshold=min_window_to_signal_std_ratio
+                sigma_threshold=min_window_to_signal_std_ratio,
             )
     return np.digitize(out, bins).astype(np.uint8)
 
@@ -194,31 +237,46 @@ def sax_fast_digitize(
     dilation=1,
     min_window_to_signal_std_ratio=0.0,
 ):
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_windows_moving = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_windows_moving = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation
+    )
     global_std = np.std(a)
     if global_std == 0:
         return np.zeros((n_windows, word_length), dtype=np.uint8)
     seg_size = window_size // word_length
-    n_windows = get_n_windows(sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride)
-    n_segments = get_n_windows(sequence_size=a.size, window_size=seg_size, dilation=dilation)
+    n_windows = get_n_windows(
+        sequence_size=a.size, window_size=window_size, dilation=dilation, stride=stride
+    )
+    n_segments = get_n_windows(
+        sequence_size=a.size, window_size=seg_size, dilation=dilation
+    )
     segment_means = np.full(n_segments, np.nan)
     window_means = np.full(n_windows_moving, np.nan)
     window_stds = np.full(n_windows_moving, np.nan)
     for d in range(dilation):
-        window_means[d::dilation] = move_mean(a[d::dilation], window_size)[window_size - 1:]
-        window_stds[d::dilation] = move_std(a[d::dilation], window_size)[window_size - 1:]
-        segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1:]
+        window_means[d::dilation] = move_mean(a[d::dilation], window_size)[
+            window_size - 1 :
+        ]
+        window_stds[d::dilation] = move_std(a[d::dilation], window_size)[
+            window_size - 1 :
+        ]
+        segment_means[d::dilation] = move_mean(a[d::dilation], seg_size)[seg_size - 1 :]
     out = np.zeros((n_windows, word_length), dtype=np.uint8)
     for i in range(n_windows):
         for j in range(word_length):
-            out[i, j] = fast_digitize(zscore_threshold(
-                a=segment_means[(i * stride) + (j * seg_size * dilation)],
-                mu=window_means[i * stride],
-                sigma=window_stds[i * stride],
-                sigma_global=global_std,
-                sigma_threshold=min_window_to_signal_std_ratio
-            ), bins)
+            out[i, j] = fast_digitize(
+                zscore_threshold(
+                    a=segment_means[(i * stride) + (j * seg_size * dilation)],
+                    mu=window_means[i * stride],
+                    sigma=window_stds[i * stride],
+                    sigma_global=global_std,
+                    sigma_threshold=min_window_to_signal_std_ratio,
+                ),
+                bins,
+            )
     return out
 
 

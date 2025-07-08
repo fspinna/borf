@@ -1,6 +1,10 @@
 import numba as nb
 import numpy as np
-from fast_borf.piecewise_aggregate_approximation.piecewise_aggregate_approximation import paa, _paa_gu
+
+from fast_borf._deprecated.piecewise_aggregate_approximation.piecewise_aggregate_approximation import (
+    _paa_gu,
+    paa,
+)
 
 
 @nb.njit
@@ -26,5 +30,6 @@ def sax_gu(a, window_size, word_length, bins, min_std_ratio=0):
     dum_ws = np.zeros(len(a) - window_size + 1)
     dum_wl = np.zeros(word_length)
     out = np.empty((dum_ws.size, dum_wl.size))
-    return np.digitize(_paa_gu(a, window_size, word_length, min_std_ratio, dum_ws, dum_wl, out), bins).astype(np.uint8)
-
+    return np.digitize(
+        _paa_gu(a, window_size, word_length, min_std_ratio, dum_ws, dum_wl, out), bins
+    ).astype(np.uint8)

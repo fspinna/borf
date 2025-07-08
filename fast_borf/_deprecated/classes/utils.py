@@ -1,16 +1,18 @@
-from scipy.sparse import coo_array
-from fast_borf.utils import (
-    check_window_size_word_length,
-    check_alphabet_size,
-    check_alphabet_sizes,
-    count_digits,
-    get_n_windows
-)
+import math
+
 import numpy as np
+import pandas as pd
 import sparse
 from joblib import Parallel, delayed
-import pandas as pd
-import math
+from scipy.sparse import coo_array
+
+from fast_borf.utils import (
+    check_alphabet_size,
+    check_alphabet_sizes,
+    check_window_size_word_length,
+    count_digits,
+    get_n_windows,
+)
 
 
 def dicts_to_coo(dicts, shape):
@@ -204,9 +206,7 @@ def process_single_config3(d_words, d_configs, shape):
         )
 
 
-def lists_to_coo(
-    list_of_dicts, list_of_configs, shape, n_jobs=1, normalize=False
-):
+def lists_to_coo(list_of_dicts, list_of_configs, shape, n_jobs=1, normalize=False):
     results = Parallel(n_jobs=n_jobs)(
         delayed(lists_to_coo_single)(d_words, d_configs, shape, normalize)
         for d_words, d_configs in zip(list_of_dicts, list_of_configs)
@@ -231,7 +231,11 @@ def lists_to_coo_single(d_words, d_configs, shape, normalize=False):
         n_words = len(words)
         if normalize:
             n_windows = get_n_windows(
-                sequence_size=signal_size, window_size=window_size, stride=stride, dilation=dilation)
+                sequence_size=signal_size,
+                window_size=window_size,
+                stride=stride,
+                dilation=dilation,
+            )
             counts = np.asarray(counts) / n_windows
         return sparse.COO(
             coords=np.asarray(
@@ -270,7 +274,6 @@ def lists_to_coo_1dsax(
     return sparse.concatenate(results, axis=-1).sum(axis=-1)
 
 
-
 def lists_to_coo_single_1dsax(d_words, d_configs, shape, normalize=False):
     shape_ = list(shape)
     shape_.append(1)
@@ -289,7 +292,11 @@ def lists_to_coo_single_1dsax(d_words, d_configs, shape, normalize=False):
         n_words = len(words)
         if normalize:
             n_windows = get_n_windows(
-                sequence_size=signal_size, window_size=window_size, stride=stride, dilation=dilation)
+                sequence_size=signal_size,
+                window_size=window_size,
+                stride=stride,
+                dilation=dilation,
+            )
             counts = np.asarray(counts) / n_windows
         dilation = int(np.log2(dilation))
         window_size = int(np.log2(window_size))
@@ -318,15 +325,12 @@ def lists_to_coo_single_1dsax(d_words, d_configs, shape, normalize=False):
         )
 
 
-def lists_to_coo_sax(
-    list_of_dicts, list_of_configs, shape, n_jobs=1, normalize=False
-):
+def lists_to_coo_sax(list_of_dicts, list_of_configs, shape, n_jobs=1, normalize=False):
     results = Parallel(n_jobs=n_jobs)(
         delayed(lists_to_coo_single_sax)(d_words, d_configs, shape, normalize)
         for d_words, d_configs in zip(list_of_dicts, list_of_configs)
     )
     return sparse.concatenate(results, axis=-1).sum(axis=-1)
-
 
 
 def lists_to_coo_single_sax(d_words, d_configs, shape, normalize=False):
@@ -346,7 +350,11 @@ def lists_to_coo_single_sax(d_words, d_configs, shape, normalize=False):
         n_words = len(words)
         if normalize:
             n_windows = get_n_windows(
-                sequence_size=signal_size, window_size=window_size, stride=stride, dilation=dilation)
+                sequence_size=signal_size,
+                window_size=window_size,
+                stride=stride,
+                dilation=dilation,
+            )
             counts = np.asarray(counts) / n_windows
         dilation = int(math.log2(dilation))
         window_size = int(math.log2(window_size))
@@ -409,7 +417,10 @@ def check_1dsax_parameters(
 
 
 def convert_configs_to_arrays(configs):
-    df = pd.DataFrame(configs, columns=["alphabet_size", "window_size", "word_length", "dilation", "stride"])
+    df = pd.DataFrame(
+        configs,
+        columns=["alphabet_size", "window_size", "word_length", "dilation", "stride"],
+    )
     grouped = df.groupby(["alphabet_size", "word_length"])
     grouped_dfs = []
     for (_, _), group_df in grouped:
@@ -418,7 +429,17 @@ def convert_configs_to_arrays(configs):
 
 
 def convert_configs_to_arrays_1dsax(configs):
-    df = pd.DataFrame(configs, columns=["alphabet_size_mean", "alphabet_size_slope", "window_size", "word_length", "dilation", "stride"])
+    df = pd.DataFrame(
+        configs,
+        columns=[
+            "alphabet_size_mean",
+            "alphabet_size_slope",
+            "window_size",
+            "word_length",
+            "dilation",
+            "stride",
+        ],
+    )
     grouped = df.groupby(["alphabet_size_mean", "alphabet_size_slope", "word_length"])
     grouped_dfs = []
     for (_, _, _), group_df in grouped:
@@ -427,7 +448,10 @@ def convert_configs_to_arrays_1dsax(configs):
 
 
 def convert_configs_to_arrays_sax(configs):
-    df = pd.DataFrame(configs, columns=["alphabet_size", "window_size", "word_length", "dilation", "stride"])
+    df = pd.DataFrame(
+        configs,
+        columns=["alphabet_size", "window_size", "word_length", "dilation", "stride"],
+    )
     grouped = df.groupby(["alphabet_size", "word_length", "stride"])
     grouped_dfs = []
     for (_, _, _), group_df in grouped:

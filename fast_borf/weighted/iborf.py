@@ -1,8 +1,7 @@
-from fast_borf.pipeline.reshaper import ReshapeTo2D
-from fast_borf.pipeline.to_scipy import ToScipySparse
-from fast_borf.pipeline.zero_columns_remover import ZeroColumnsRemover
-from fast_borf.weighted.borf_multi import build_pipeline_auto
 from sklearn.base import BaseEstimator, TransformerMixin
+
+from fast_borf.pipeline import ReshapeTo2D, ToScipySparse, ZeroColumnsRemover
+from fast_borf.weighted.borf_multi import build_pipeline_auto
 
 
 class IBORF(BaseEstimator, TransformerMixin):
@@ -21,7 +20,7 @@ class IBORF(BaseEstimator, TransformerMixin):
         n_jobs_numba=1,
         transformer_weights=None,
         contains_time_idx=True,
-):
+    ):
         self.window_size_min_window_size = window_size_min_window_size
         self.window_size_max_window_size = window_size_max_window_size
         self.word_lengths_n_word_lengths = word_lengths_n_word_lengths
@@ -78,4 +77,3 @@ class IBORF(BaseEstimator, TransformerMixin):
 
     def transform(self, X, y=None):
         return self._transform(X, y)
-

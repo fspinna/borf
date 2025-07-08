@@ -1,53 +1,19 @@
-import numba as nb
-
 import awkward as ak
+import numba as nb
 import numpy as np
 
-from fast_borf.symbolic_aggregate_approximation.symbolic_aggregate_approximation_clean import sax
-from fast_borf.utils import (
-    get_norm_bins,
-    are_window_size_and_dilation_compatible_with_signal_length,
+from fast_borf._deprecated.symbolic_aggregate_approximation.symbolic_aggregate_approximation_clean import (
+    sax,
 )
-from fast_borf.bag_of_patterns.utils import (
+from fast_borf.bop_utils import (
     ndindex_2d_array,
 )
-
 from fast_borf.hash_unique import unique
-
-
-@nb.njit(fastmath=True, cache=True)
-def array_to_int_new_base(array, base):
-    word_length = array.shape[0]
-    result = 0
-    for i in range(0, word_length, 1):
-        result += array[i] * base ** (word_length - i - 1)
-    return result
-
-
-@nb.njit(fastmath=True, cache=True)
-def int_to_array_new_base(number, base, word_length):
-    array = np.zeros(word_length, dtype=np.int32)
-    for i in range(word_length):
-        power = word_length - i - 1
-        array[i] = number // (base ** power)
-        number %= base ** power
-    return array
-
-
-@nb.njit(fastmath=True, cache=True)
-def sax_words_to_int(arrays, base):
-    out = np.empty(arrays.shape[0], dtype=np.int64)
-    for i in range(arrays.shape[0]):
-        out[i] = array_to_int_new_base(arrays[i], base)
-    return out
-
-
-@nb.njit(fastmath=True, cache=True)
-def int_to_sax_words(numbers, base, word_length):
-    out = np.empty((numbers.shape[0], word_length), dtype=np.int64)
-    for i in range(numbers.shape[0]):
-        out[i] = int_to_array_new_base(numbers[i], base, word_length)
-    return out
+from fast_borf.sax_utils import sax_words_to_int
+from fast_borf.utils import (
+    are_window_size_and_dilation_compatible_with_signal_length,
+    get_norm_bins,
+)
 
 
 @nb.njit(cache=True)
@@ -104,14 +70,13 @@ def new_transform_single_conf(
 
 @nb.njit(parallel=True, nogil=True, cache=True)
 def transform_sax_patterns(
-        panel: ak.Array,
-        window_size,
-        word_length,
-        alphabet_size,
-        stride,
-        dilation,
-        min_window_to_signal_std_ratio=0.0,
-
+    panel: ak.Array,
+    window_size,
+    word_length,
+    alphabet_size,
+    stride,
+    dilation,
+    min_window_to_signal_std_ratio=0.0,
 ):
     bins = get_norm_bins(alphabet_size=alphabet_size)
     n_signals = len(panel[0])
@@ -123,10 +88,11 @@ def transform_sax_patterns(
         signal = np.asarray(panel[ts_idx][signal_idx])
         signal = signal[~np.isnan(signal)]
         if not are_window_size_and_dilation_compatible_with_signal_length(
-                window_size, dilation, signal.size
+            window_size, dilation, signal.size
         ):
             continue
-        counts[i+1] = len(new_transform_single_conf(
+        counts[i + 1] = len(
+            new_transform_single_conf(
                 a=signal,
                 ts_idx=ts_idx,
                 signal_idx=signal_idx,
@@ -136,7 +102,9 @@ def transform_sax_patterns(
                 bins=bins,
                 dilation=dilation,
                 stride=stride,
-                min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,))
+                min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
+            )
+        )
     cum_counts = np.cumsum(counts)
     n_rows = np.sum(counts)
     shape = (n_rows, 4)
@@ -147,7 +115,7 @@ def transform_sax_patterns(
         signal = np.asarray(panel[ts_idx][signal_idx])
         signal = signal[~np.isnan(signal)]
         if not are_window_size_and_dilation_compatible_with_signal_length(
-                window_size, dilation, signal.size
+            window_size, dilation, signal.size
         ):
             continue
         out_ = new_transform_single_conf(
@@ -162,16 +130,15 @@ def transform_sax_patterns(
             stride=stride,
             min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
         )
-        out[cum_counts[i]:cum_counts[i+1], :] = out_
+        out[cum_counts[i] : cum_counts[i + 1], :] = out_
     return out
 
 
 if __name__ == "__main__":
 
-
     np.random.seed(0)
     # X = np.random.randn(1000, 2, 100)
-    #SMALL_PANEL = np.random.randn(1, 2, 1_000)
+    # SMALL_PANEL = np.random.randn(1, 2, 1_000)
     X = np.random.randn(1_000, 1, 1_000)
 
     # out = transform_sax_patterns_nonumba_par(
@@ -196,8 +163,6 @@ if __name__ == "__main__":
     #     signal_idx=0,
     # )
 
-
-
     # x = X[0][0]
     #
     # out = new_transform_single_conf(
@@ -210,7 +175,6 @@ if __name__ == "__main__":
     #     bins=np.zeros(1),
     #     dilation=1,
     # )
-
 
     # words, counts = new_transform_single(
     #     a=x,
@@ -229,8 +193,6 @@ if __name__ == "__main__":
     # out, config = transform_sax_patterns(
     #     X, configurations=configs, alphabet_size=2, word_length=8, stride=1
     # )
-
-
 
     # from classes.utils import list_of_int_dicts_to_coo
 

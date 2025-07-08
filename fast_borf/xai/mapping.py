@@ -1,12 +1,14 @@
+from typing import Literal, Optional
+
 import numpy as np
-from sklearn.pipeline import FeatureUnion
-from fast_borf.xai.pipeline_mapping import map_borf_to_conf
-from fast_borf.xai.sax_mapping import align_sax_words_to_raw_ts
-from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
-from fast_borf.xai.receptive_field import ReceptiveField
 import pandas as pd
 from scipy.stats import rankdata
-from typing import Optional, Literal
+from sklearn.pipeline import FeatureUnion
+
+from fast_borf.bop_utils import separate_timestamps_from_panel
+from fast_borf.xai.pipeline_mapping import map_borf_to_conf
+from fast_borf.xai.receptive_field import ReceptiveField
+from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
 
 
 class BagOfReceptiveFields:
@@ -30,8 +32,12 @@ class BagOfReceptiveFields:
             transformer[self.borf_position].get_params()
             for _, transformer in self.borf.transformer_list
         ]
+        self.contains_time_idx = self.configs[0].get(
+            "contains_time_idx", False
+        )  # try to get the time index flag for backward compatibility
 
         self.X_ = None
+        self.timestamps_ = None
         self.y_true_ = None
         self.y_pred_ = None
         self.X_transformed_ = None
@@ -60,12 +66,21 @@ class BagOfReceptiveFields:
     ):
         self.task_ = task
         features = np.arange(len(self.mapping))
+        self.X_transformed_ = self.borf.transform(X)
+        X, timestamps = separate_timestamps_from_panel(
+            X=X, contains_time_idx=self.contains_time_idx
+        )
         self.X_ = X
+        self.timestamps_ = timestamps
         self.y_true_ = y_true
         self.y_pred_ = y_pred
-        self.X_transformed_ = self.borf.transform(X)
         self.receptive_fields_, self.X_sax_ = build_receptive_fields(
-            X=X, X_transformed=self.X_transformed_, features=features, configs=self.configs, mapping=self.mapping
+            X=X,
+            timestamps=timestamps,
+            X_transformed=self.X_transformed_,
+            features=features,
+            configs=self.configs,
+            mapping=self.mapping,
         )
         return self
 
@@ -84,11 +99,16 @@ class BagOfReceptiveFields:
             self.F_ = F[
                 self.y_pred_, np.arange(F.shape[1]), :
             ]  # only the importance toward predicted class
-
         elif self.task_ == "regression":
             assert F.shape[0] == len(self.X_)
             assert F.shape[1] == len(self.mapping)
             self.F_ = F
+        else:
+            raise ValueError(
+                "task should be either 'classification' or 'regression', "
+                f"got {self.task_} instead"
+            )
+
         self.F_argsort_ = np.argsort(
             -np.abs(self.F_), axis=1
         )  # for each instance, feature idxs sorted by abs imp
@@ -133,10 +153,10 @@ class BagOfReceptiveFields:
             receptive_field = self.receptive_fields_[receptive_field_idx]
             if count_overlapping:
                 alignments, counts = np.unique(
-                    receptive_field.alignments[idx], return_counts=True
+                    receptive_field.alignments_indices[idx], return_counts=True
                 )
             else:
-                alignments = np.unique(receptive_field.alignments[idx])
+                alignments = np.unique(receptive_field.alignments_indices[idx])
                 counts = np.ones_like(alignments)
             S_single[0, receptive_field.signal_idx, alignments] += (
                 receptive_field.feature_importance[idx] * counts
@@ -288,9 +308,9 @@ class BagOfReceptiveFields:
 
 
 def build_receptive_fields(
-    X, X_transformed, features, configs, mapping, feature_importance=None
+    X, timestamps, X_transformed, features, configs, mapping, feature_importance=None
 ):
-    sax_converted_X = wsax_configurations_alignment_conversion(X, configs)
+    sax_converted_X = wsax_configurations_alignment_conversion(X, timestamps, configs)
     # X_transformed = self.borf.transform(X)
     X_receptive_fields = dict()
     for feature in features:
@@ -300,18 +320,29 @@ def build_receptive_fields(
         window_size = config["window_size"]
         ts_receptive_fields_alignments = list()
         ts_receptive_fields_mappings = list()
+        ts_receptive_fields_alignments_indices = list()
         for i in range(len(X)):
             if word_idx in sax_converted_X[conf_idx][i][signal_idx]:
+                signal = np.array(X[i, signal_idx])
+                signal_timestamps = timestamps[i, 0]
+                is_nan = np.isnan(signal)
                 align = sax_converted_X[conf_idx][i][signal_idx][word_idx]
-                ts_receptive_fields_alignments.append(align)
-                ts_receptive_fields_mappings.append(np.array(X[i, signal_idx][align]))
+                align = np.where(~is_nan)[0][align]  # indices where signal is not NaN
+                ts_receptive_fields_alignments.append(signal_timestamps[align])
+                ts_receptive_fields_mappings.append(signal[align])
+                ts_receptive_fields_alignments_indices.append(align)
             else:
                 ts_receptive_fields_alignments.append(
                     np.empty(
-                        (0, word_length, window_size // word_length), dtype=np.int_
+                        (0, word_length, window_size // word_length), dtype=np.float_
                     )
                 )
                 ts_receptive_fields_mappings.append(
+                    np.empty(
+                        (0, word_length, window_size // word_length), dtype=np.float_
+                    )
+                )
+                ts_receptive_fields_alignments_indices.append(
                     np.empty(
                         (0, word_length, window_size // word_length), dtype=np.int_
                     )
@@ -322,12 +353,15 @@ def build_receptive_fields(
             conf_idx=conf_idx,
             feature_idx=feature,
             feature_values=X_transformed[:, feature].toarray().ravel(),
-            feature_importance=feature_importance[:, feature]
-            if feature_importance is not None
-            else None,
+            feature_importance=(
+                feature_importance[:, feature]
+                if feature_importance is not None
+                else None
+            ),
             alignments=ts_receptive_fields_alignments,
             mappings=ts_receptive_fields_mappings,
-            **config
+            alignments_indices=ts_receptive_fields_alignments_indices,
+            **config,
         )
         X_receptive_fields[feature] = receptive_field
     return X_receptive_fields, sax_converted_X

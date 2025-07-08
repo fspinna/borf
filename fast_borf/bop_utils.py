@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 
-from fast_borf.utils import encode_integers, convert_to_base_10
+from fast_borf.utils import convert_to_base_10, encode_integers
 
 
 @nb.njit(cache=True)
@@ -72,3 +72,12 @@ def inverse_nindex_2d_array(dim1_idx, dim2_idx, dim2_shape):
 def get_hash_table_size(word_length, alphabet_size):
     max_base_a = array_to_int(np.full(word_length, alphabet_size - 1))
     return convert_to_base_10(max_base_a, alphabet_size)
+
+
+def separate_timestamps_from_panel(X, contains_time_idx):
+    if contains_time_idx:
+        timestamps = X[:, -1:, :]
+        X = X[:, :-1, :]
+    else:
+        timestamps = np.repeat(np.arange(X.shape[2])[None, None, :], len(X), axis=0)
+    return X, timestamps

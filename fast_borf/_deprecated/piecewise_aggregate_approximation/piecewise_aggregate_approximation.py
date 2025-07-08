@@ -1,8 +1,9 @@
+import numba as nb
+import numpy as np
+
 from fast_borf.align import align_window_to_segments
 from fast_borf.moving import move_mean, move_std
 from fast_borf.zscore import zscore_threshold
-import numpy as np
-import numba as nb
 
 
 @nb.njit(fastmath=True)
@@ -44,7 +45,8 @@ def paa_gu(a, window_size, word_length, min_std_ratio=0):
 @nb.guvectorize(
     "float64[:], int64, int64, float64, float64[:], float64[:], float64[:, :]",
     "(n),(),(),(),(m),(l)->(m,l)",
-    nopython=True, fastmath=True,
+    nopython=True,
+    fastmath=True,
 )
 def _paa_gu(a, window_size, word_length, min_std_ratio, dum_ws, dum_wl, out):
     out_ = paa(a, window_size, word_length, min_std_ratio)

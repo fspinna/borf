@@ -1,15 +1,13 @@
-from sklearn.base import TransformerMixin, BaseEstimator
-
 import numpy as np
-from fast_borf.weighted.borf_weighted import (
-    transform_sax_patterns
-)
-from fast_borf.utils import set_n_jobs_numba, convert_to_base_10
 import sparse
+from sklearn.base import BaseEstimator, TransformerMixin
 
-from fast_borf.bag_of_patterns.utils import (
+from fast_borf.bop_utils import (
     array_to_int,
+    separate_timestamps_from_panel,
 )
+from fast_borf.utils import convert_to_base_10, set_n_jobs_numba
+from fast_borf.weighted.borf_weighted import transform_sax_patterns
 
 
 class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):
@@ -33,8 +31,10 @@ class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):
         self.min_window_to_signal_std_ratio = min_window_to_signal_std_ratio
         self.prefix = prefix
         self.n_jobs = n_jobs
-        self.n_words = convert_to_base_10(array_to_int(np.full(self.word_length, self.alphabet_size - 1)) + 1,
-                                          base=self.alphabet_size)
+        self.n_words = convert_to_base_10(
+            array_to_int(np.full(self.word_length, self.alphabet_size - 1)) + 1,
+            base=self.alphabet_size,
+        )
         self.contains_time_idx = contains_time_idx
         set_n_jobs_numba(n_jobs=self.n_jobs)
 
@@ -42,17 +42,11 @@ class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X, y=None):
-        if self.contains_time_idx:
-            timestamps = X[:, -1:, :]
-            X = X[:, :-1, :]
-        else:
-            timestamps = np.repeat(np.arange(X.shape[2])[None, None, :], len(X), axis=0)
-
-        shape_ = (
-            len(X),
-            len(X[0]),
-            self.n_words
+        X, timestamps = separate_timestamps_from_panel(
+            X, contains_time_idx=self.contains_time_idx
         )
+
+        shape_ = (len(X), len(X[0]), self.n_words)
         out = transform_sax_patterns(
             panel=X,
             panel_timestamps=timestamps,
@@ -64,8 +58,4 @@ class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):
             min_window_to_signal_std_ratio=self.min_window_to_signal_std_ratio,
         )
         # ts_idx, signal_idx, words, count
-        return sparse.COO(
-            coords=out[:, :3].T,
-            data=out[:, -1].T,
-            shape=shape_
-        )
+        return sparse.COO(coords=out[:, :3].T, data=out[:, -1].T, shape=shape_)
