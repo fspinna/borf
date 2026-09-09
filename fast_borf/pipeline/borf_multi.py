@@ -1,9 +1,10 @@
+from typing import Optional, Sequence, Tuple
+
+import awkward as ak
 from sklearn.pipeline import FeatureUnion, make_pipeline
-from typing import Sequence, Dict, Optional, Tuple, Literal
 
 from fast_borf.heuristic import heuristic_function_sax
-from fast_borf.weighted.borf_single import BorfSaxSingleTransformer
-import awkward as ak
+from fast_borf.pipeline.borf_single import BorfSaxSingleTransformer
 
 
 class BorfPipelineBuilder:
@@ -23,7 +24,7 @@ class BorfPipelineBuilder:
         transformer_weights=None,
         pipeline_objects: Optional[Sequence[Tuple]] = None,
         contains_time_idx=True,
-):
+    ):
         self.window_size_min_window_size = window_size_min_window_size
         self.window_size_max_window_size = window_size_max_window_size
         self.word_lengths_n_word_lengths = word_lengths_n_word_lengths
@@ -87,7 +88,9 @@ def build_pipeline(
             n_jobs=n_jobs_numba,
             contains_time_idx=contains_time_idx,
         )
-        transformer = make_pipeline(borf, *[obj(**kwargs) for obj, kwargs in pipeline_objects])
+        transformer = make_pipeline(
+            borf, *[obj(**kwargs) for obj, kwargs in pipeline_objects]
+        )
         transformers.append(transformer)
     union = FeatureUnion(
         transformer_list=[(str(i), transformers[i]) for i in range(len(transformers))],
@@ -98,22 +101,22 @@ def build_pipeline(
 
 
 def build_pipeline_auto(
-        time_series_min_length: int,
-        time_series_max_length: int,
-        window_size_min_window_size=4,
-        window_size_max_window_size=None,
-        word_lengths_n_word_lengths=4,
-        alphabets_min_symbols=3,
-        alphabets_max_symbols=4,
-        alphabets_step=1,
-        dilations_min_dilation=1,
-        dilations_max_dilation=None,
-        min_window_to_signal_std_ratio: float = 0.0,
-        n_jobs=1,
-        n_jobs_numba=1,
-        transformer_weights=None,
-        pipeline_objects: Optional[Sequence[Tuple]] = None,
-        contains_time_idx=True,
+    time_series_min_length: int,
+    time_series_max_length: int,
+    window_size_min_window_size=4,
+    window_size_max_window_size=None,
+    word_lengths_n_word_lengths=4,
+    alphabets_min_symbols=3,
+    alphabets_max_symbols=4,
+    alphabets_step=1,
+    dilations_min_dilation=1,
+    dilations_max_dilation=None,
+    min_window_to_signal_std_ratio: float = 0.0,
+    n_jobs=1,
+    n_jobs_numba=1,
+    transformer_weights=None,
+    pipeline_objects: Optional[Sequence[Tuple]] = None,
+    contains_time_idx=True,
 ):
     configs = heuristic_function_sax(
         time_series_min_length=time_series_min_length,
@@ -128,14 +131,15 @@ def build_pipeline_auto(
         dilations_max_dilation=dilations_max_dilation,
     )
 
-    return build_pipeline(
-        configs=configs,
-        min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
-        n_jobs=n_jobs,
-        n_jobs_numba=n_jobs_numba,
-        transformer_weights=transformer_weights,
-        pipeline_objects=pipeline_objects,
-        contains_time_idx=contains_time_idx,
-    ), configs
-
-
+    return (
+        build_pipeline(
+            configs=configs,
+            min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
+            n_jobs=n_jobs,
+            n_jobs_numba=n_jobs_numba,
+            transformer_weights=transformer_weights,
+            pipeline_objects=pipeline_objects,
+            contains_time_idx=contains_time_idx,
+        ),
+        configs,
+    )

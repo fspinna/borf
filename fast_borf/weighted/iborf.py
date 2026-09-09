@@ -1,7 +1,7 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from fast_borf.pipeline import ReshapeTo2D, ToScipySparse, ZeroColumnsRemover
-from fast_borf.weighted.borf_multi import build_pipeline_auto
+from fast_borf.pipeline.borf_multi import build_pipeline_auto
 
 
 class IBORF(BaseEstimator, TransformerMixin):

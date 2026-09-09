@@ -4,6 +4,9 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from fast_borf.bop_utils import (
     array_to_int,
+    int_to_array_new_base,
+    int_to_sax_words,
+    sax_words_to_int,
     separate_timestamps_from_panel,
 )
 from fast_borf.utils import convert_to_base_10, set_n_jobs_numba
@@ -59,3 +62,23 @@ class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):
         )
         # ts_idx, signal_idx, words, count
         return sparse.COO(coords=out[:, :3].T, data=out[:, -1].T, shape=shape_)
+
+    def out_to_in_map(self, features):
+        signal_idxs = np.array([key[0] for key in features])
+        words = np.array([key[1] for key in features])
+        sax_words = int_to_sax_words(
+            numbers=words, word_length=self.word_length, base=self.alphabet_size
+        )
+        in_features = list()
+        for signal_idx, word_array in zip(signal_idxs, sax_words):
+            in_features.append((signal_idx, tuple(word_array.tolist())))
+        return in_features
+
+    def in_to_out_map(self, features):
+        signal_idxs = np.array([key[0] for key in features])
+        sax_words = np.array([key[1] for key in features])
+        words = sax_words_to_int(arrays=sax_words, base=self.alphabet_size)
+        out_features = list()
+        for signal_idx, word in zip(signal_idxs, words):
+            out_features.append((signal_idx, word))
+        return out_features

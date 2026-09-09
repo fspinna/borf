@@ -7,9 +7,9 @@ from fast_borf._deprecated.symbolic_aggregate_approximation.symbolic_aggregate_a
 )
 from fast_borf.bop_utils import (
     ndindex_2d_array,
+    sax_words_to_int,
 )
 from fast_borf.hash_unique import unique
-from fast_borf.sax_utils import sax_words_to_int
 from fast_borf.utils import (
     are_window_size_and_dilation_compatible_with_signal_length,
     get_norm_bins,

@@ -1,12 +1,13 @@
 import numba as nb
 import numpy as np
 
+# from fast_borf.xai.utils import int_to_sax_words
+from fast_borf.bop_utils import int_to_sax_words, sax_words_to_int
 from fast_borf.utils import (
     are_window_size_and_dilation_compatible_with_signal_length,
     get_norm_bins,
 )
 from fast_borf.weighted.symbolic_aggregate_approximation_weighted import sax
-from fast_borf.xai.utils import int_to_sax_words, sax_words_to_int
 
 
 @nb.njit

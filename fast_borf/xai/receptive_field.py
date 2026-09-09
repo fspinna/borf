@@ -1,8 +1,9 @@
 import numpy as np
 
-from fast_borf.bop_utils import separate_timestamps_from_panel
+from fast_borf.bop_utils import int_to_array_new_base, separate_timestamps_from_panel
 from fast_borf.xai.sax_mapping import wsax_panel_alignment_conversion
-from fast_borf.xai.utils import int_to_array_new_base
+
+# from fast_borf.xai.utils import int_to_array_new_base
 
 
 class ReceptiveField:

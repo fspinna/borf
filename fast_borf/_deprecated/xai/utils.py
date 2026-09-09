@@ -7,8 +7,8 @@ def int_to_array_new_base(number, base, word_length):
     array = np.zeros(word_length, dtype=np.int32)
     for i in range(word_length):
         power = word_length - i - 1
-        array[i] = number // (base ** power)
-        number %= base ** power
+        array[i] = number // (base**power)
+        number %= base**power
     return array
 
 
