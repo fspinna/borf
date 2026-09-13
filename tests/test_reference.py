@@ -3,7 +3,7 @@
 The files in tests/reference/ were generated at the commit recorded in
 provenance.json, before any refactoring. They pin the behaviour the cleanup
 must preserve: the SAX word counts, the feature matrices produced by the
-pipeline, and the configurations chosen by the heuristic.
+original pipeline builder, and the configurations chosen by the heuristic.
 """
 
 import json
@@ -13,12 +13,9 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from fast_borf import BORF
 from fast_borf.core.transform import transform_sax_patterns
-from fast_borf.heuristic import heuristic_function_sax
-from fast_borf.pipeline.borf_multi import BorfPipelineBuilder
-from fast_borf.pipeline.reshaper import ReshapeTo2D
-from fast_borf.pipeline.to_scipy import ToScipySparse
-from fast_borf.pipeline.zero_columns_remover import ZeroColumnsRemover
+from fast_borf.heuristic import generate_configs
 
 REFERENCE_DIR = Path(__file__).parent / "reference"
 PROVENANCE = json.loads((REFERENCE_DIR / "provenance.json").read_text())
@@ -26,6 +23,8 @@ CASES = sorted(path.stem for path in REFERENCE_DIR.glob("*.npz"))
 CORE_CONFIGS = PROVENANCE["core_configs"]
 CORE_STD_RATIOS = PROVENANCE["core_std_ratios"]
 TRAIN_FRACTION = 0.7
+# The reference heuristic outputs were generated with a single alphabet of size 2.
+HEURISTIC_ALPHABET_SIZES = (2,)
 
 
 @pytest.fixture(scope="module", params=CASES)
@@ -50,6 +49,18 @@ def transform_core(X, T, config, ratio):
     return sort_rows(rows)
 
 
+def reference_matrix(data, prefix):
+    return sp.csr_matrix(
+        (data[f"{prefix}/data"], data[f"{prefix}/indices"], data[f"{prefix}/indptr"]),
+        shape=tuple(data[f"{prefix}/shape"]),
+    )
+
+
+def assert_same_matrix(actual, expected):
+    assert actual.shape == expected.shape
+    assert (actual != expected).nnz == 0
+
+
 @pytest.mark.parametrize("ratio", CORE_STD_RATIOS)
 @pytest.mark.parametrize("config_idx", range(len(CORE_CONFIGS)))
 def test_core_transform_matches_reference(case, config_idx, ratio):
@@ -58,62 +69,57 @@ def test_core_transform_matches_reference(case, config_idx, ratio):
     np.testing.assert_array_equal(rows, data[f"core/{config_idx}/{ratio}"])
 
 
+@pytest.mark.parametrize("timestamps", ["none", "rescaled"])
 @pytest.mark.parametrize("ratio", CORE_STD_RATIOS)
 @pytest.mark.parametrize("config_idx", range(len(CORE_CONFIGS)))
-def test_evenly_spaced_timestamps_match_unweighted_sax(case, config_idx, ratio):
+def test_evenly_spaced_timestamps_match_unweighted_sax(
+    case, config_idx, ratio, timestamps
+):
     # The unweighted reference comes from the original (unweighted) SAX. The
-    # time unit and origin must not matter, so the timestamps are rescaled by a
-    # power of two (exact in floating point) and shifted.
+    # time unit and origin must not matter, so the timestamps are either
+    # omitted or rescaled by a power of two (exact in floating point) and
+    # shifted.
     name, data = case
     key = f"unweighted/{config_idx}/{ratio}"
     if key not in data:
         pytest.skip(f"{name} has irregular timestamps")
     X = data["X"]
-    T = np.tile(0.25 * np.arange(X.shape[2]) + 100.0, (len(X), 1, 1))
+    T = None
+    if timestamps == "rescaled":
+        T = np.tile(0.25 * np.arange(X.shape[2]) + 100.0, (len(X), 1, 1))
     rows = transform_core(X, T, CORE_CONFIGS[config_idx], ratio)
     np.testing.assert_array_equal(rows, data[key])
 
 
-@pytest.mark.parametrize("contains_time_idx", [True, False])
-def test_pipeline_matches_reference(case, contains_time_idx):
+@pytest.mark.parametrize("time_channel", [True, False])
+def test_borf_matches_reference(case, time_channel):
     name, data = case
     X = data["X"]
-    if contains_time_idx:
+    if time_channel:
         X = np.concatenate([X, data["T"]], axis=1)
     n_train = int(len(X) * TRAIN_FRACTION)
-    builder = BorfPipelineBuilder(
-        pipeline_objects=[
-            (ReshapeTo2D, {}),
-            (ZeroColumnsRemover, {}),
-            (ToScipySparse, {}),
-        ],
-        contains_time_idx=contains_time_idx,
-    )
-    pipe = builder.build(X[:n_train])
-    pipe.fit(X[:n_train])
+    borf = BORF(time_channel=time_channel)
+    X_train = borf.fit_transform(X[:n_train])
 
-    tag = "with_time" if contains_time_idx else "no_time"
-    assert builder.configs_ == PROVENANCE["pipeline_configs"][name][tag]
-    for split, part in (("train", X[:n_train]), ("test", X[n_train:])):
-        prefix = f"pipeline/{tag}/{split}"
-        expected = sp.csr_matrix(
-            (
-                data[f"{prefix}/data"],
-                data[f"{prefix}/indices"],
-                data[f"{prefix}/indptr"],
-            ),
-            shape=tuple(data[f"{prefix}/shape"]),
-        )
-        actual = sp.csr_matrix(pipe.transform(part))
-        assert actual.shape == expected.shape
-        assert (actual != expected).nnz == 0
+    tag = "with_time" if time_channel else "no_time"
+    assert borf.configs_ == PROVENANCE["pipeline_configs"][name][tag]
+    assert_same_matrix(X_train, reference_matrix(data, f"pipeline/{tag}/train"))
+    assert_same_matrix(
+        borf.transform(X[:n_train]), reference_matrix(data, f"pipeline/{tag}/train")
+    )
+    assert_same_matrix(
+        borf.transform(X[n_train:]), reference_matrix(data, f"pipeline/{tag}/test")
+    )
 
 
 @pytest.mark.parametrize("length", sorted(PROVENANCE["heuristic"], key=int))
 def test_heuristic_matches_reference(length):
-    configs = heuristic_function_sax(int(length), int(length))
+    configs = generate_configs(
+        int(length), int(length), alphabet_sizes=HEURISTIC_ALPHABET_SIZES
+    )
     assert configs == PROVENANCE["heuristic"][length]
 
 
 def test_heuristic_with_variable_lengths_matches_reference():
-    assert heuristic_function_sax(20, 100) == PROVENANCE["heuristic_min_max"]
+    configs = generate_configs(20, 100, alphabet_sizes=HEURISTIC_ALPHABET_SIZES)
+    assert configs == PROVENANCE["heuristic_min_max"]

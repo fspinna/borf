@@ -3,38 +3,26 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
-from sklearn.pipeline import FeatureUnion
 
 from fast_borf.bop_utils import separate_timestamps_from_panel
-from fast_borf.xai.pipeline_mapping import map_borf_to_conf
+from fast_borf.borf import BORF
 from fast_borf.xai.receptive_field import ReceptiveField
 from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
 
 
 class BagOfReceptiveFields:
-    def __init__(
-        self,
-        borf: FeatureUnion,
-        borf_position=0,
-        reshaper_position=1,
-        zero_columns_remover_position=2,
-    ):
+    def __init__(self, borf: BORF):
         self.borf = borf
-        self.borf_position = borf_position
-        self.reshaper_position = reshaper_position
-        self.zero_columns_remover_position = zero_columns_remover_position
-        self.mapping = map_borf_to_conf(
-            borf=self.borf,
-            reshaper_position=reshaper_position,
-            zero_columns_remover_position=zero_columns_remover_position,
-        )
+        self.mapping = borf.feature_index_  # (conf_idx, signal_idx, word_idx)
+        self.contains_time_idx = borf.time_channel
         self.configs = [
-            transformer[self.borf_position].get_params()
-            for _, transformer in self.borf.transformer_list
+            dict(
+                config,
+                min_window_to_signal_std_ratio=borf.min_window_to_signal_std_ratio,
+                contains_time_idx=borf.time_channel,
+            )
+            for config in borf.configs_
         ]
-        self.contains_time_idx = self.configs[0].get(
-            "contains_time_idx", False
-        )  # try to get the time index flag for backward compatibility
 
         self.X_ = None
         self.timestamps_ = None

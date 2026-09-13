@@ -3,14 +3,6 @@ import numpy as np
 
 
 @nb.njit(cache=True)
-def array_to_int(arr):
-    result = 0
-    for i in range(len(arr)):
-        result = result * 10 + arr[i]
-    return result
-
-
-@nb.njit(cache=True)
 def ndindex_2d_array(idx, dim2_shape):
     row_idx = idx // dim2_shape
     col_idx = idx % dim2_shape

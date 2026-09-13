@@ -1,8 +1,7 @@
 import math
 
-import numba as nb
 import numpy as np
-from numba import njit, set_num_threads, vectorize
+from numba import njit, vectorize
 
 
 @njit(fastmath=True, cache=True)
@@ -43,11 +42,6 @@ def get_norm_bins(alphabet_size: int, mu=0, std=1) -> np.ndarray:
     return ppf(np.linspace(0, 1, alphabet_size + 1)[1:-1], mu, std)
 
 
-@njit(cache=True)
-def is_empty(a: np.ndarray) -> bool:
-    return a.size == 0
-
-
 @njit(fastmath=True, cache=True)
 def are_window_size_and_dilation_compatible_with_signal_length(
     window_size, dilation, signal_length
@@ -58,41 +52,9 @@ def are_window_size_and_dilation_compatible_with_signal_length(
         return False
 
 
-@njit(cache=True)
-def is_valid_windowing(sequence_size: int, window_size: int, dilation: int) -> bool:
-    if (
-        sequence_size < window_size * dilation
-    ):  # if window_size * dilation exceeds the length of the sequence
-        return False
-    else:
-        return True
-
-
-def set_n_jobs_numba(n_jobs):
-    if n_jobs == -1:
-        # set_num_threads(psutil.cpu_count(logical=False))
-        set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-    else:
-        set_num_threads(n_jobs)
-
-
 @njit(fastmath=True, cache=True)
 def get_n_windows(sequence_size, window_size, dilation=1, stride=1, padding=0):
     return 1 + math.floor(
         (sequence_size + 2 * padding - window_size - (dilation - 1) * (window_size - 1))
         / stride
     )
-
-
-@nb.njit(fastmath=True, cache=True)
-def convert_to_base_10(number, base):
-    result = 0
-    multiplier = 1
-
-    while number > 0:
-        digit = number % 10
-        result += digit * multiplier
-        multiplier *= base
-        number //= 10
-
-    return result
