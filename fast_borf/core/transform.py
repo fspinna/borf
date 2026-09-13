@@ -1,14 +1,8 @@
-import awkward as ak
 import numba as nb
 import numpy as np
 
-from fast_borf._deprecated.symbolic_aggregate_approximation.symbolic_aggregate_approximation_clean import (
-    sax,
-)
-from fast_borf.bop_utils import (
-    ndindex_2d_array,
-    sax_words_to_int,
-)
+from fast_borf.bop_utils import ndindex_2d_array, sax_words_to_int
+from fast_borf.core.sax import sax
 from fast_borf.hash_unique import unique
 from fast_borf.utils import (
     are_window_size_and_dilation_compatible_with_signal_length,
@@ -19,6 +13,7 @@ from fast_borf.utils import (
 @nb.njit(cache=True)
 def new_transform_single(
     a: np.ndarray,
+    timestamps: np.ndarray,
     window_size,
     word_length,
     alphabet_size,
@@ -28,7 +23,8 @@ def new_transform_single(
     min_window_to_signal_std_ratio=0.0,
 ):
     sax_words = sax(
-        a=a,
+        arr=a,
+        timestamps=timestamps,
         window_size=window_size,
         word_length=word_length,
         bins=bins,
@@ -43,6 +39,7 @@ def new_transform_single(
 @nb.njit(cache=True)
 def new_transform_single_conf(
     a: np.ndarray,
+    timestamps: np.ndarray,
     ts_idx,
     signal_idx,
     window_size,
@@ -55,6 +52,7 @@ def new_transform_single_conf(
 ):
     words, counts = new_transform_single(
         a=a,
+        timestamps=timestamps,
         window_size=window_size,
         word_length=word_length,
         alphabet_size=alphabet_size,
@@ -70,7 +68,8 @@ def new_transform_single_conf(
 
 @nb.njit(parallel=True, nogil=True, cache=True)
 def transform_sax_patterns(
-    panel: ak.Array,
+    panel,  # shape (n_ts, n_signals, n_obs)
+    panel_timestamps,  # shape (n_ts, 1, n_obs)
     window_size,
     word_length,
     alphabet_size,
@@ -86,7 +85,10 @@ def transform_sax_patterns(
     for i in nb.prange(iterations):
         ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
         signal = np.asarray(panel[ts_idx][signal_idx])
-        signal = signal[~np.isnan(signal)]
+        signal_timestamps = np.asarray(panel_timestamps[ts_idx][0])
+        is_nan = np.isnan(signal)
+        signal = signal[~is_nan]
+        signal_timestamps = signal_timestamps[~is_nan]
         if not are_window_size_and_dilation_compatible_with_signal_length(
             window_size, dilation, signal.size
         ):
@@ -94,6 +96,7 @@ def transform_sax_patterns(
         counts[i + 1] = len(
             new_transform_single_conf(
                 a=signal,
+                timestamps=signal_timestamps,
                 ts_idx=ts_idx,
                 signal_idx=signal_idx,
                 window_size=window_size,
@@ -113,13 +116,17 @@ def transform_sax_patterns(
     for i in nb.prange(iterations):
         ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
         signal = np.asarray(panel[ts_idx][signal_idx])
-        signal = signal[~np.isnan(signal)]
+        signal_timestamps = np.asarray(panel_timestamps[ts_idx][0])
+        is_nan = np.isnan(signal)
+        signal = signal[~is_nan]
+        signal_timestamps = signal_timestamps[~is_nan]
         if not are_window_size_and_dilation_compatible_with_signal_length(
             window_size, dilation, signal.size
         ):
             continue
         out_ = new_transform_single_conf(
             a=signal,
+            timestamps=signal_timestamps,
             ts_idx=ts_idx,
             signal_idx=signal_idx,
             window_size=window_size,
@@ -132,69 +139,3 @@ def transform_sax_patterns(
         )
         out[cum_counts[i] : cum_counts[i + 1], :] = out_
     return out
-
-
-if __name__ == "__main__":
-
-    np.random.seed(0)
-    # X = np.random.randn(1000, 2, 100)
-    # SMALL_PANEL = np.random.randn(1, 2, 1_000)
-    X = np.random.randn(1_000, 1, 1_000)
-
-    # out = transform_sax_patterns_nonumba_par(
-    #     panel=X,
-    #     window_size=32,
-    #     word_length=8,
-    #     alphabet_size=2,
-    #     stride=1,
-    #     dilation=1,
-    #     min_window_to_signal_std_ratio=0.0,
-    # )
-
-    # x = X[0]
-    #
-    # out = transform_sax_patterns_ts(
-    #     ts=x,
-    #     window_size=32,
-    #     word_length=8,
-    #     alphabet_size=2,
-    #     stride=1,
-    #     dilation=1,
-    #     signal_idx=0,
-    # )
-
-    # x = X[0][0]
-    #
-    # out = new_transform_single_conf(
-    #     a=x,
-    #     ts_idx=0,
-    #     signal_idx=0,
-    #     window_size=32,
-    #     word_length=8,
-    #     alphabet_size=2,
-    #     bins=np.zeros(1),
-    #     dilation=1,
-    # )
-
-    # words, counts = new_transform_single(
-    #     a=x,
-    #     window_size=32,
-    #     word_length=8,
-    #     alphabet_size=2,
-    #     bins=np.zeros(1),
-    #     dilation=1,
-    # )
-    #
-    # # test = concat_test()
-    # # X = np.random.randn(1, 1, 50)
-    # configs = nb.typed.List([
-    #     nb.typed.List([32, 1]),
-    # ])
-    # out, config = transform_sax_patterns(
-    #     X, configurations=configs, alphabet_size=2, word_length=8, stride=1
-    # )
-
-    # from classes.utils import list_of_int_dicts_to_coo
-
-    # shape = (1, 1, convert_to_base_10(11111111, 2))
-    # out = list_of_int_dicts_to_coo(out, shape)

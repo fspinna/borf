@@ -1,7 +1,9 @@
 import itertools
-import numpy as np
-from fast_borf.utils import is_valid_windowing, is_empty
 from typing import Literal
+
+import numpy as np
+
+from fast_borf.utils import is_empty, is_valid_windowing
 
 
 def get_borf_params(
@@ -344,12 +346,3 @@ def heuristic_function_sax(
         config.pop("alphabet_size_slope")
         config["alphabet_size"] = config.pop("alphabet_size_mean")
     return configs
-
-
-
-
-
-if __name__ == "__main__":
-    configs = heuristic_function(20, 100, complexity="quadratic")
-    configs_sax = heuristic_function_sax(20, 100, complexity="quadratic")
-    configs_sax_linear = heuristic_function_sax(20, 100, complexity="linear")

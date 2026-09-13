@@ -1,5 +1,5 @@
 import numba as nb
-import numpy as np
+
 from fast_borf.constants import FASTMATH
 
 
@@ -7,13 +7,6 @@ from fast_borf.constants import FASTMATH
 def zscore(a: float, mu: float, sigma: float) -> float:
     if sigma == 0:
         return 0
-    return (a - mu) / sigma
-
-
-@nb.njit(fastmath=FASTMATH, cache=True)
-def zscore_vector(a: np.ndarray, mu: float, sigma: float) -> np.ndarray:
-    if sigma == 0:
-        return np.zeros_like(a)
     return (a - mu) / sigma
 
 

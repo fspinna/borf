@@ -4,13 +4,12 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from fast_borf.bop_utils import (
     array_to_int,
-    int_to_array_new_base,
     int_to_sax_words,
     sax_words_to_int,
     separate_timestamps_from_panel,
 )
+from fast_borf.core.transform import transform_sax_patterns
 from fast_borf.utils import convert_to_base_10, set_n_jobs_numba
-from fast_borf.weighted.borf_weighted import transform_sax_patterns
 
 
 class BorfSaxSingleTransformer(BaseEstimator, TransformerMixin):

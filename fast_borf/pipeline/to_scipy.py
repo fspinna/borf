@@ -1,6 +1,5 @@
-from sklearn.base import BaseEstimator, TransformerMixin
 import sparse
-import numpy as np
+from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class ToScipySparse(BaseEstimator, TransformerMixin):
@@ -15,4 +14,3 @@ class ToScipySparse(BaseEstimator, TransformerMixin):
 
     def inverse_transform(self, X):
         return sparse.COO.from_scipy_sparse(X)
-

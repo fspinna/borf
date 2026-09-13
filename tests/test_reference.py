@@ -13,12 +13,12 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from fast_borf.core.transform import transform_sax_patterns
 from fast_borf.heuristic import heuristic_function_sax
 from fast_borf.pipeline.borf_multi import BorfPipelineBuilder
 from fast_borf.pipeline.reshaper import ReshapeTo2D
 from fast_borf.pipeline.to_scipy import ToScipySparse
 from fast_borf.pipeline.zero_columns_remover import ZeroColumnsRemover
-from fast_borf.weighted.borf_weighted import transform_sax_patterns
 
 REFERENCE_DIR = Path(__file__).parent / "reference"
 PROVENANCE = json.loads((REFERENCE_DIR / "provenance.json").read_text())
