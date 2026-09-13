@@ -56,7 +56,8 @@ class BORF(TransformerMixin, BaseEstimator):
         feature_index_ for how its output columns are labelled.
     time_channel : bool, default=False
         If True, the last channel of X holds the timestamps of each series and
-        the other channels are its signals. If False, observations are evenly
+        the other channels are its signals. Timestamps must be strictly
+        increasing within each series. If False, observations are evenly
         spaced.
     n_jobs : int, default=1
         Number of numba threads. -1 uses numba's default (all logical cores).

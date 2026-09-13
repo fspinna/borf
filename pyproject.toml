@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fast-borf"
+version = "0.2.0.dev0"
+description = "Bag-Of-Receptive-Fields (BORF) features for regular and irregular time series"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "awkward>=2.6",
+    "numba>=0.60",
+    "numpy>=1.26",
+    "scikit-learn>=1.6",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+xai = ["pandas>=2.3"]
+test = ["pytest>=8", "fast-borf[xai]"]
+dev = ["fast-borf[test]", "pre-commit"]
+
+[project.urls]
+Repository = "https://github.com/fspinna/borf"
+
+[tool.setuptools.packages.find]
+include = ["fast_borf*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.isort]
+profile = "black"
