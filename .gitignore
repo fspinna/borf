@@ -1,4 +1,8 @@
-/evaluation
+# Research material stays out of the repo
+/evaluation/
+/notebooks/
+*.ipynb
+.idea/
 
 ### macOS ###
 # General
