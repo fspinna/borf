@@ -90,7 +90,7 @@ def wsax_panel_alignment_conversion(
     dilation,
     stride=1,
     min_window_to_signal_std_ratio=0.0,
-    **kwargs
+    **kwargs,
 ):
     panel_conversion = list()
     bins = get_norm_bins(alphabet_size=alphabet_size)

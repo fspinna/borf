@@ -55,9 +55,10 @@ def make_hash_table(ar):
     uniques_cnt = np.zeros(l, dtype=np.int_)
     return uniques, uniques_cnt, l, mask
 
+
 @numba.njit(cache=True)
 def set_item(uniques, uniques_cnt, mask, h, v, total, miss_hits, weight):
-    index = (h & mask)
+    index = h & mask
 
     # open address hash
     # great cache performance
@@ -99,6 +100,8 @@ def unique(ar):
     miss_hits = 0
     for v in ar:
         h = hash_function(v)
-        total, miss_hits = set_item(uniques, uniques_cnt, mask, h, v, total, miss_hits, 1)
+        total, miss_hits = set_item(
+            uniques, uniques_cnt, mask, h, v, total, miss_hits, 1
+        )
     uniques_, uniques_cnt_ = concrete(ar, uniques, uniques_cnt, l, total)
     return uniques_, uniques_cnt_
