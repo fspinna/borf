@@ -1,19 +1,69 @@
+from collections import OrderedDict
+from collections.abc import Mapping
 from typing import Literal, Optional
 
 import numpy as np
-import pandas as pd
+import scipy.sparse as sp
 from scipy.stats import rankdata
 
-from fast_borf.bop_utils import separate_timestamps_from_panel
-from fast_borf.borf import BORF
+from fast_borf.borf import BORF, n_words, to_padded_array
+from fast_borf.core.sax import window_positions
+from fast_borf.core.transform import panel_words
 from fast_borf.xai.receptive_field import ReceptiveField
-from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
+from fast_borf.xai.saliency import add_window_importance
+
+CACHED_CONFIGS = 16
 
 
 class BagOfReceptiveFields:
+    """Map the feature importances of a model on BORF features back onto the series.
+
+    Workflow::
+
+        explainer = BagOfReceptiveFields(borf).build(X, y_true, y_pred, task)
+        explainer.add_feature_importance(F)  # any importances, e.g. SHAP values
+        explainer.map_contained_feature_importance_to_saliency()  # sets S_
+        explainer.map_notcontained_feature_importance()  # sets F_norm_
+        explainer.receptive_fields_[j]  # where feature j's word occurs
+
+    Parameters
+    ----------
+    borf : BORF
+        Fitted BORF whose output columns the importances refer to. Columns
+        created by its block_transformer cannot be explained.
+
+    Attributes
+    ----------
+    mapping : ndarray of shape (n_features, 3)
+        (configuration index, signal index, word) of each feature.
+    configs : list of dict
+        BORF's configurations, with min_window_to_signal_std_ratio and
+        contains_time_idx added.
+    X_, timestamps_ : ndarray
+        The signals and timestamps of the series given to build, NaN-padded.
+    X_transformed_ : sparse matrix
+        BORF's features of those series.
+    F_ : ndarray of shape (n_series, n_features)
+        Importances, for the predicted class in classification.
+    F_argsort_, F_rank_ : ndarray
+        Per series, features sorted by, and ranked by, absolute importance.
+    F_sum_, F_sum_argsort_ : ndarray
+        Absolute importance summed over series, and features sorted by it.
+    F_avg_rank_, F_avg_rank_argsort_ : ndarray
+        Rank averaged over series, and features sorted by it. The rank
+        attributes are computed on first access, as they are the slowest.
+    S_ : ndarray of shape (n_series, n_signals, n_timestamps)
+        Saliency: the importances of the words occurring in each series,
+        spread over the points their windows cover.
+    F_norm_ : ndarray of shape (n_series, n_features)
+        Importances of the words absent from each series, rescaled so that
+        their sum weighted by window size equals their plain sum; NaN for
+        words that occur.
+    receptive_fields_ : mapping from feature index to ReceptiveField
+        Computed when first accessed.
+    """
+
     def __init__(self, borf: BORF):
-        if borf.vocabulary != "fit":
-            raise NotImplementedError('Explanations need BORF(vocabulary="fit")')
         if np.any(borf.feature_index_[:, 1] < 0):
             raise ValueError(
                 "Some columns were created by block_transformer and do not map "
@@ -36,12 +86,8 @@ class BagOfReceptiveFields:
         self.y_true_ = None
         self.y_pred_ = None
         self.X_transformed_ = None
-        self.X_sax_ = None
         self.F_ = None
-        self.F_argsort_ = None
-        self.F_rank_ = None
-        self.F_avg_rank_ = None
-        self.F_avg_rank_argsort_ = None
+        self._ranks = {}
         self.F_sum_ = None
         self.F_sum_argsort_ = None
         self.F_norm_ = None
@@ -60,23 +106,21 @@ class BagOfReceptiveFields:
         task: Optional[Literal["classification", "regression"]] = None,
     ):
         self.task_ = task
-        features = np.arange(len(self.mapping))
+        X = to_padded_array(X)
         self.X_transformed_ = self.borf.transform(X)
-        X, timestamps = separate_timestamps_from_panel(
-            X=X, contains_time_idx=self.contains_time_idx
-        )
-        self.X_ = X
-        self.timestamps_ = timestamps
+        if self.contains_time_idx:
+            self.X_, self._panel_timestamps = X[:, :-1], X[:, -1:]
+            self.timestamps_ = self._panel_timestamps
+        else:
+            self.X_, self._panel_timestamps = X, None
+            self.timestamps_ = np.repeat(
+                np.arange(X.shape[2])[None, None, :], len(X), axis=0
+            )
         self.y_true_ = y_true
         self.y_pred_ = y_pred
-        self.receptive_fields_, self.X_sax_ = build_receptive_fields(
-            X=X,
-            timestamps=timestamps,
-            X_transformed=self.X_transformed_,
-            features=features,
-            configs=self.configs,
-            mapping=self.mapping,
-        )
+        self._words = OrderedDict()
+        self._counts = self._count_words()
+        self.receptive_fields_ = ReceptiveFields(self)
         return self
 
     def add_feature_importance(self, F):
@@ -104,259 +148,230 @@ class BagOfReceptiveFields:
                 f"got {self.task_} instead"
             )
 
-        self.F_argsort_ = np.argsort(
-            -np.abs(self.F_), axis=1
-        )  # for each instance, feature idxs sorted by abs imp
         self.F_sum_ = np.abs(self.F_).sum(
             axis=0
         )  # sum of abs importance (global importance across instances)
         self.F_sum_argsort_ = np.argsort(
             -self.F_sum_
         )  # feature idxs sorted by global abs sum
-        self.F_rank_ = rankdata(
-            -np.abs(self.F_), axis=1
-        )  # for each instance, feature ranks by abs imp
-        self.F_avg_rank_ = np.mean(
-            self.F_rank_, axis=0
-        )  # average rank across instances (global importance)
-        self.F_avg_rank_argsort_ = np.argsort(
-            self.F_avg_rank_
-        )  # feature idxs sorted by global avg rank importance
-        for feature, receptive_field in self.receptive_fields_.items():
-            receptive_field.feature_importance = self.F_[:, feature]
+        self._ranks = {}  # the rank attributes below are computed on first access
+        self.receptive_fields_.clear()
         return self
 
-    def _add_normalized_feature_importance(self, F_norm):
-        assert F_norm.shape[0] == len(self.X_)
-        assert F_norm.shape[1] == len(self.mapping)
-        self.F_norm_ = F_norm
-        for feature, receptive_field in self.receptive_fields_.items():
-            receptive_field.feature_importance_norm = F_norm[:, feature]
-        return self
+    def _rank(self, name, compute):
+        if self.F_ is None:
+            return None
+        if name not in self._ranks:
+            self._ranks[name] = compute()
+        return self._ranks[name]
 
-    def map_contained_single_feature_importance_to_saliency(
-        self, idx, count_overlapping=True, normalize=True
-    ):
-        X_single = self.X_[idx : idx + 1]
-        F_single = self.F_[idx : idx + 1]
-        ts_transformed = self.X_transformed_[idx : idx + 1]
-        positive_features = np.argwhere(ts_transformed > 0)[:, 1]
-        S_single = np.zeros_like(X_single)
-        if F_single.sum() == 0:  # if all feature importance are zero
-            return S_single
-        for receptive_field_idx in positive_features:
-            receptive_field = self.receptive_fields_[receptive_field_idx]
-            if count_overlapping:
-                alignments, counts = np.unique(
-                    receptive_field.alignments_indices[idx], return_counts=True
-                )
-            else:
-                alignments = np.unique(receptive_field.alignments_indices[idx])
-                counts = np.ones_like(alignments)
-            S_single[0, receptive_field.signal_idx, alignments] += (
-                receptive_field.feature_importance[idx] * counts
-            )
-        if normalize:
-            S_single = S_single / (
-                S_single.sum() / np.sum(F_single[:, positive_features])
-            )
-        return S_single
+    @property
+    def F_argsort_(self):
+        """For each series, features sorted by absolute importance."""
+        return self._rank("argsort", lambda: np.argsort(-np.abs(self.F_), axis=1))
+
+    @property
+    def F_rank_(self):
+        """For each series, the rank of each feature by absolute importance."""
+        return self._rank("rank", lambda: rankdata(-np.abs(self.F_), axis=1))
+
+    @property
+    def F_avg_rank_(self):
+        """Rank averaged over series (global importance)."""
+        return self._rank("avg_rank", lambda: np.mean(self.F_rank_, axis=0))
+
+    @property
+    def F_avg_rank_argsort_(self):
+        """Features sorted by average rank, most important first."""
+        return self._rank("avg_rank_argsort", lambda: np.argsort(self.F_avg_rank_))
 
     def map_contained_feature_importance_to_saliency(
         self, count_overlapping=True, normalize=True
     ):
-        S = list()
-        for i in range(len(self.X_)):
-            S_single = self.map_contained_single_feature_importance_to_saliency(
-                i, count_overlapping, normalize
+        """Spread the importance of each word occurring in a series over its points.
+
+        Every window adds its word's importance to the points it covers. With
+        count_overlapping=False, a point gets a word's importance once however
+        many of its windows cover it. With normalize=True, each series'
+        saliency is rescaled to sum to the importances of its words.
+        """
+        F = np.ascontiguousarray(self.F_, dtype=np.float64)
+        S = np.zeros(self.X_.shape)
+        for config_idx in range(len(self.configs)):
+            words = self._config_words(config_idx)
+            add_window_importance(
+                S,
+                F,
+                words["columns"],
+                words["word_offsets"],
+                words["observed"],
+                words["observed_offsets"],
+                words["positions"],
+                self.X_.shape[1],
+                count_overlapping,
             )
-            S.append(S_single)
-        self.S_ = np.vstack(S)
+        has_importance = F.sum(axis=1) != 0  # if all feature importance are zero
+        S[~has_importance] = 0
+        if normalize:
+            contained = self._counts > 0
+            contained_sum = np.asarray(contained.multiply(F).sum(axis=1)).ravel()
+            for i in np.flatnonzero(has_importance):
+                S[i] = S[i] / (S[i].sum() / contained_sum[i])
+        self.S_ = S
         return self
-
-    # def map_single_notcontained_feature_importance(self, idx):
-    #     F_single = self.F_[idx:idx + 1]
-    #     ts_transformed = self.X_transformed_[idx:idx + 1]
-    #     null_features = np.argwhere(ts_transformed == 0)[:, 1]
-    #     null_features_sum = np.sum(F_single[:, null_features])
-    #     F_sum = 0
-    #     word_lengths = list()
-    #     for null_feature in null_features:
-    #         feature_importance = self.receptive_fields_[null_feature].feature_importance[idx]
-    #         word_length = self.receptive_fields_[null_feature].word_length
-    #         word_lengths.append(word_length)
-    #         F_sum += feature_importance * word_length
-    #     F_single_norm = np.full_like(F_single, np.nan)
-    #     F_single_norm[:, null_features] = F_single[:, null_features] * null_features_sum / F_sum
-    #     # np.allclose(F_single[:, null_features].sum(),
-    #     #             np.nansum(np.array(word_lengths) * F_single_norm[:, null_features].ravel()))
-    #     return F_single_norm
-
-    def map_single_notcontained_feature_importance(self, idx):
-        F_single = self.F_[idx : idx + 1]
-        ts_transformed = self.X_transformed_[idx : idx + 1]
-        null_features = np.argwhere(ts_transformed == 0)[:, 1]
-        null_features_sum = np.sum(F_single[:, null_features])
-        F_sum = 0
-        window_sizes = list()
-        for null_feature in null_features:
-            feature_importance = self.receptive_fields_[
-                null_feature
-            ].feature_importance[idx]
-            window_size = self.receptive_fields_[null_feature].window_size
-            window_sizes.append(window_size)
-            F_sum += feature_importance * window_size
-        F_single_norm = np.full_like(F_single, np.nan)
-        F_single_norm[:, null_features] = (
-            F_single[:, null_features] * null_features_sum / F_sum
-        )
-        # np.allclose(F_single[:, null_features].sum(),
-        #             np.nansum(np.array(word_lengths) * F_single_norm[:, null_features].ravel()))
-        return F_single_norm
 
     def map_notcontained_feature_importance(self):
-        F_norm = list()
-        for i in range(len(self.X_)):
-            F_single_norm = self.map_single_notcontained_feature_importance(i)
-            F_norm.append(F_single_norm)
-        self._add_normalized_feature_importance(np.vstack(F_norm))
+        """Rescale the importances of the words absent from each series (F_norm_)."""
+        F = np.asarray(self.F_, dtype=np.float64)
+        absent = ~(self._counts > 0).toarray()
+        window_sizes = np.array([c["window_size"] for c in self.configs])[
+            self.mapping[:, 0]
+        ]
+        F_absent = np.where(absent, F, 0.0)
+        null_features_sum = F_absent.sum(axis=1, keepdims=True)
+        F_sum = (F_absent * window_sizes).sum(axis=1, keepdims=True)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            F_norm = np.where(absent, F * null_features_sum / F_sum, np.nan)
+        self.F_norm_ = F_norm
+        self.receptive_fields_.clear()
         return self
 
-    def get_mapping_with_feature_importance(self, idxs=None):
-        if idxs is None:
-            idxs = np.arange(len(self.X_))
-        absolute_importance = np.abs(self.F_[idxs]).sum(axis=0)
-        mapping_df = pd.DataFrame(
-            self.mapping, columns=["conf_idx", "signal_idx", "word_idx"]
+    def _config_words(self, config_idx):
+        """Words, positions and feature of every window, for one configuration."""
+        if config_idx in self._words:
+            self._words.move_to_end(config_idx)
+            return self._words[config_idx]
+        config = self.configs[config_idx]
+        words, word_offsets, observed, observed_offsets = panel_words(
+            self.X_,
+            self._panel_timestamps,
+            config["window_size"],
+            config["word_length"],
+            config["alphabet_size"],
+            config["stride"],
+            config["dilation"],
+            config["min_window_to_signal_std_ratio"],
         )
-        mapping_df["feature_importance"] = absolute_importance
-        return mapping_df
-
-    def get_most_important_not_contained_patterns_by_signal(self, i):
-        x_tr = self.X_transformed_[i].toarray()
-        f_norm = self.F_norm_[i]
-        signal_idxs = self.mapping[:, 1]
-        zero_indices = np.argwhere(x_tr == 0)[:, 1]
-        num_signals = np.max(signal_idxs) + 1
-        sorted_indices_by_signal = []
-
-        # Step 4: Loop through each unique signal index
-        for signal in range(num_signals):
-            # Identify indices within the current signal
-            signal_indices = zero_indices[signal_idxs[zero_indices] == signal]
-
-            if len(signal_indices) > 0:
-                filtered_importance = f_norm[signal_indices]
-                abs_importance = np.abs(filtered_importance)
-                sorted_indices = np.argsort(-abs_importance)
-                sorted_original_indices = signal_indices[sorted_indices]
-                sorted_indices_by_signal.append(sorted_original_indices)
-            else:
-                sorted_indices_by_signal.append(np.array([]))
-        return sorted_indices_by_signal
-
-    def get_most_important_contained_patterns_by_signal(self, i):
-        x_tr = self.X_transformed_[i].toarray()
-        f_norm = self.F_norm_[i]
-        signal_idxs = self.mapping[:, 1]
-        not_zero_indices = np.argwhere(x_tr > 0)[:, 1]
-        num_signals = np.max(signal_idxs) + 1
-        sorted_indices_by_signal = []
-
-        # Step 4: Loop through each unique signal index
-        for signal in range(num_signals):
-            # Identify indices within the current signal
-            signal_indices = not_zero_indices[signal_idxs[not_zero_indices] == signal]
-
-            if len(signal_indices) > 0:
-                filtered_importance = f_norm[signal_indices]
-                abs_importance = np.abs(filtered_importance)
-                sorted_indices = np.argsort(-abs_importance)
-                sorted_original_indices = signal_indices[sorted_indices]
-                sorted_indices_by_signal.append(sorted_original_indices)
-            else:
-                sorted_indices_by_signal.append(np.array([]))
-        return sorted_indices_by_signal
-
-    def get_most_important_patterns_by_signal(self, i):
-        x_tr = self.X_transformed_[i].toarray()
-        f_norm = self.F_norm_[i]
-        signal_idxs = self.mapping[:, 1]
-        indices = np.arange(len(x_tr[0]))
-        num_signals = np.max(signal_idxs) + 1
-        sorted_indices_by_signal = []
-
-        # Step 4: Loop through each unique signal index
-        for signal in range(num_signals):
-            # Identify indices within the current signal
-            signal_indices = indices[signal_idxs[indices] == signal]
-
-            if len(signal_indices) > 0:
-                filtered_importance = f_norm[signal_indices]
-                abs_importance = np.abs(filtered_importance)
-                sorted_indices = np.argsort(-abs_importance)
-                sorted_original_indices = signal_indices[sorted_indices]
-                sorted_indices_by_signal.append(sorted_original_indices)
-            else:
-                sorted_indices_by_signal.append(np.array([]))
-        return sorted_indices_by_signal
-
-
-def build_receptive_fields(
-    X, timestamps, X_transformed, features, configs, mapping, feature_importance=None
-):
-    sax_converted_X = wsax_configurations_alignment_conversion(X, timestamps, configs)
-    # X_transformed = self.borf.transform(X)
-    X_receptive_fields = dict()
-    for feature in features:
-        conf_idx, signal_idx, word_idx = mapping[feature]
-        config = configs[conf_idx]
-        word_length = config["word_length"]
-        window_size = config["window_size"]
-        ts_receptive_fields_alignments = list()
-        ts_receptive_fields_mappings = list()
-        ts_receptive_fields_alignments_indices = list()
-        for i in range(len(X)):
-            if word_idx in sax_converted_X[conf_idx][i][signal_idx]:
-                signal = np.array(X[i, signal_idx])
-                signal_timestamps = timestamps[i, 0]
-                is_nan = np.isnan(signal)
-                align = sax_converted_X[conf_idx][i][signal_idx][word_idx]
-                align = np.where(~is_nan)[0][align]  # indices where signal is not NaN
-                ts_receptive_fields_alignments.append(signal_timestamps[align])
-                ts_receptive_fields_mappings.append(signal[align])
-                ts_receptive_fields_alignments_indices.append(align)
-            else:
-                ts_receptive_fields_alignments.append(
-                    np.empty(
-                        (0, word_length, window_size // word_length), dtype=np.float_
-                    )
-                )
-                ts_receptive_fields_mappings.append(
-                    np.empty(
-                        (0, word_length, window_size // word_length), dtype=np.float_
-                    )
-                )
-                ts_receptive_fields_alignments_indices.append(
-                    np.empty(
-                        (0, word_length, window_size // word_length), dtype=np.int_
-                    )
-                )
-        receptive_field = ReceptiveField(
-            compressed_word_int=word_idx,
-            signal_idx=signal_idx,
-            conf_idx=conf_idx,
-            feature_idx=feature,
-            feature_values=X_transformed[:, feature].toarray().ravel(),
-            feature_importance=(
-                feature_importance[:, feature]
-                if feature_importance is not None
-                else None
+        n_signals = self.X_.shape[1]
+        windows_per_signal = np.diff(word_offsets)
+        signal_of_window = np.repeat(
+            np.arange(len(windows_per_signal)) % n_signals, windows_per_signal
+        )
+        result = dict(
+            words=words,
+            word_offsets=word_offsets,
+            observed=observed,
+            observed_offsets=observed_offsets,
+            positions=window_positions(
+                int(windows_per_signal.max(initial=0)),
+                config["window_size"],
+                config["word_length"],
+                config["stride"],
+                config["dilation"],
             ),
-            alignments=ts_receptive_fields_alignments,
-            mappings=ts_receptive_fields_mappings,
-            alignments_indices=ts_receptive_fields_alignments_indices,
+            columns=self._word_columns(config_idx, signal_of_window, words),
+        )
+        self._words[config_idx] = result
+        if len(self._words) > CACHED_CONFIGS:
+            self._words.popitem(last=False)
+        return result
+
+    def _word_columns(self, config_idx, signals, words):
+        """Feature of each (signal, word), or -1 when it is not a feature."""
+        config_slice = self.borf.config_slices_[config_idx]
+        rows = self.mapping[config_slice]
+        columns = np.full(len(words), -1, dtype=np.int64)
+        if len(rows) == 0:
+            return columns
+        size = n_words(self.configs[config_idx])
+        keys = rows[:, 1] * size + rows[:, 2]
+        order = np.argsort(keys)
+        keys = keys[order]
+        window_keys = signals * size + words
+        position = np.minimum(np.searchsorted(keys, window_keys), len(keys) - 1)
+        found = keys[position] == window_keys
+        columns[found] = config_slice.start + order[position[found]]
+        return columns
+
+    def _count_words(self):
+        """Occurrences of each feature's word in each series, as a sparse matrix."""
+        n_signals = self.X_.shape[1]
+        rows, cols = [], []
+        for config_idx in range(len(self.configs)):
+            words = self._config_words(config_idx)
+            series_of_window = np.repeat(
+                np.arange(len(words["word_offsets"]) - 1) // n_signals,
+                np.diff(words["word_offsets"]),
+            )
+            is_feature = words["columns"] >= 0
+            rows.append(series_of_window[is_feature])
+            cols.append(words["columns"][is_feature])
+        rows, cols = np.concatenate(rows), np.concatenate(cols)
+        return sp.csr_matrix(
+            (np.ones(len(rows), dtype=np.int64), (rows, cols)),
+            shape=(len(self.X_), len(self.mapping)),
+        )
+
+    def _receptive_field(self, feature):
+        config_idx, signal_idx, word = (int(v) for v in self.mapping[feature])
+        config = self.configs[config_idx]
+        words = self._config_words(config_idx)
+        n_signals = self.X_.shape[1]
+        segment_size = config["window_size"] // config["word_length"]
+        alignments_indices, alignments, mappings = [], [], []
+        for i in range(len(self.X_)):
+            g = i * n_signals + signal_idx
+            start, stop = words["word_offsets"][g], words["word_offsets"][g + 1]
+            occurrences = np.flatnonzero(words["words"][start:stop] == word)
+            observed = words["observed"][
+                words["observed_offsets"][g] : words["observed_offsets"][g + 1]
+            ]
+            if len(occurrences):
+                indices = observed[words["positions"][occurrences]]
+            else:
+                indices = np.empty(
+                    (0, config["word_length"], segment_size), dtype=np.int64
+                )
+            alignments_indices.append(indices)
+            alignments.append(self.timestamps_[i, 0][indices])
+            mappings.append(self.X_[i, signal_idx][indices])
+        return ReceptiveField(
+            compressed_word_int=word,
+            signal_idx=signal_idx,
+            conf_idx=config_idx,
+            feature_idx=feature,
+            feature_values=self.X_transformed_[:, feature].toarray().ravel(),
+            feature_importance=None if self.F_ is None else self.F_[:, feature],
+            feature_importance_norm=(
+                None if self.F_norm_ is None else self.F_norm_[:, feature]
+            ),
+            alignments=alignments,
+            mappings=mappings,
+            alignments_indices=alignments_indices,
             **config,
         )
-        X_receptive_fields[feature] = receptive_field
-    return X_receptive_fields, sax_converted_X
+
+
+class ReceptiveFields(Mapping):
+    """Receptive fields by feature index, computed and cached on first access."""
+
+    def __init__(self, explainer):
+        self._explainer = explainer
+        self._cache = {}
+
+    def __getitem__(self, feature):
+        if not 0 <= feature < len(self):
+            raise KeyError(feature)
+        if feature not in self._cache:
+            self._cache[feature] = self._explainer._receptive_field(feature)
+        return self._cache[feature]
+
+    def __iter__(self):
+        return iter(range(len(self)))
+
+    def __len__(self):
+        return len(self._explainer.mapping)
+
+    def clear(self):
+        """Forget computed fields, e.g. after the importances change."""
+        self._cache.clear()

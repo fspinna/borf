@@ -298,6 +298,16 @@ def series_lengths(signals):
     return int(ak.min(counts)), int(ak.max(counts))
 
 
+def to_padded_array(X, length=None):
+    """X as a float array; a ragged awkward array is padded with NaN to length."""
+    if not isinstance(X, ak.Array):
+        return np.asarray(X, dtype=np.float64)
+    if length is None:
+        length = int(ak.max(ak.num(X, axis=2)))
+    padded = ak.fill_none(ak.pad_none(X, length, axis=2, clip=True), np.nan)
+    return ak.to_numpy(padded).astype(np.float64)
+
+
 def check_timestamps(signals, timestamps):
     """Raise if timestamps are missing for observed values or not strictly increasing.
 
@@ -307,10 +317,8 @@ def check_timestamps(signals, timestamps):
         length = int(
             max(ak.max(ak.num(signals, axis=2)), ak.max(ak.num(timestamps, axis=2)))
         )
-        signals, timestamps = (
-            ak.to_numpy(ak.fill_none(ak.pad_none(a, length, axis=2, clip=True), np.nan))
-            for a in (signals, timestamps)
-        )
+        signals = to_padded_array(signals, length)
+        timestamps = to_padded_array(timestamps, length)
     times = timestamps[:, 0, :]
     is_observed = ~np.isnan(signals).all(axis=1)
     if np.any(np.isnan(times) & is_observed):

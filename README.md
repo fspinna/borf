@@ -15,9 +15,8 @@ values and irregular sampling, and is a scikit-learn transformer.
 pip install "git+https://github.com/fspinna/borf"
 ```
 
-Add the `xai` extra (`fast-borf[xai]`) for the explanation tools in
-`fast_borf.xai`. The original implementation for regularly sampled series is
-available as release [v0.1.0](https://github.com/fspinna/borf/releases/tag/v0.1.0).
+The original implementation for regularly sampled series is available as
+release [v0.1.0](https://github.com/fspinna/borf/releases/tag/v0.1.0).
 
 ## Quick start
 
@@ -91,6 +90,30 @@ BORF(block_transformer=SelectKBest(chi2, k=10))  # 10 words per configuration
 
 `feature_index_` and `config_slices_` follow columns that the transformer keeps
 or selects.
+
+## Explanations
+
+`fast_borf.xai.BagOfReceptiveFields` maps per-series feature importances back
+onto the series. The importances can come from anything: SHAP values, or for a
+linear model simply coefficient times feature value.
+
+```python
+from fast_borf.xai import BagOfReceptiveFields
+
+explainer = BagOfReceptiveFields(borf).build(X, y_true, y_pred, task="classification")
+explainer.add_feature_importance(F)  # (n_series, n_features), or (n_classes, n_series, n_features)
+explainer.map_contained_feature_importance_to_saliency()  # S_: importance per point
+explainer.map_notcontained_feature_importance()  # F_norm_: importance of absent words
+
+field = explainer.receptive_fields_[explainer.F_avg_rank_argsort_[0]]
+field.alignments_indices[i]  # (occurrences, word_length, segment_size) points of each segment
+field.mappings[i], field.alignments[i]  # their values and timestamps
+```
+
+Receptive fields are computed when first accessed. `fast_borf.core` exposes the
+underlying steps (`segment_means`, `discretize`, `window_positions`,
+`panel_words`) for custom analyses and plots. See
+[`examples/explanation.py`](examples/explanation.py).
 
 ## Development
 

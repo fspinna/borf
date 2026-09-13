@@ -1,7 +1,9 @@
+"""Moving mean and standard deviation, weighted by the time between observations."""
+
 import numba as nb
 import numpy as np
 
-from fast_borf.constants import FASTMATH
+FASTMATH = True
 
 
 @nb.njit(fastmath=FASTMATH, cache=True)

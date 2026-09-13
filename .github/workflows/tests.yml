@@ -16,7 +16,7 @@ jobs:
             python: "3.10"
             pins: >-
               numpy==1.26.4 numba==0.60.0 scipy==1.13.1 scikit-learn==1.6.1
-              awkward==2.6.10 pandas==2.3.3
+              awkward==2.6.10
           - name: latest versions
             python: "3.13"
             pins: ""

@@ -17,8 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-xai = ["pandas>=2.3"]
-test = ["pytest>=8", "fast-borf[xai]"]
+test = ["pytest>=8"]
 dev = ["fast-borf[test]", "pre-commit"]
 
 [project.urls]

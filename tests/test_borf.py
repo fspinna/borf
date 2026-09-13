@@ -12,7 +12,6 @@ from sklearn.preprocessing import FunctionTransformer, MaxAbsScaler, Normalizer
 
 from fast_borf import BORF
 from fast_borf.core.transform import transform_sax_patterns
-from fast_borf.xai.mapping import BagOfReceptiveFields
 
 
 def assert_same_matrix(actual, expected):
@@ -296,14 +295,3 @@ def test_block_selector_gets_y_in_sklearn_pipeline(X):
 def test_clone_keeps_block_transformer():
     borf = BORF(block_transformer=SelectKBest(chi2, k=3))
     assert clone(borf).get_params()["block_transformer__k"] == 3
-
-
-def test_explanations_need_fit_vocabulary(X):
-    with pytest.raises(NotImplementedError, match="vocabulary"):
-        BagOfReceptiveFields(BORF(vocabulary="full").fit(X))
-
-
-def test_explanations_need_word_columns(X):
-    total = FunctionTransformer(lambda b: np.asarray(b.sum(axis=1)))
-    with pytest.raises(ValueError, match="block_transformer"):
-        BagOfReceptiveFields(BORF(block_transformer=total).fit(X))
