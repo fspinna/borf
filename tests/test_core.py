@@ -8,6 +8,7 @@ from fast_borf.core import (
     encode_words,
     panel_words,
     sax,
+    sax_words,
     segment_means,
     transform_sax_patterns,
     window_positions,
@@ -48,6 +49,20 @@ def test_constant_signal_gets_first_symbol():
     )
     assert symbols.shape == (33, 4)
     assert np.all(symbols == 0)
+
+
+@pytest.mark.parametrize("alphabet_size", [2, 3, 5])
+def test_sax_words_equal_encoded_symbols(signal, alphabet_size):
+    timestamps = np.cumsum(np.random.default_rng(1).exponential(1.0, signal.size))
+    bins = breakpoints(alphabet_size)
+    for values in (signal, np.full(signal.size, 1.0)):  # also a constant signal
+        symbols = sax(values, timestamps, bins=bins, **CONFIG)
+        np.testing.assert_array_equal(
+            sax_words(
+                values, timestamps, alphabet_size=alphabet_size, bins=bins, **CONFIG
+            ),
+            encode_words(symbols, alphabet_size),
+        )
 
 
 def test_breakpoints_split_the_normal_into_equal_parts():

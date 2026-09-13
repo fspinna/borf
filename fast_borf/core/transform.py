@@ -9,9 +9,8 @@ spaced observations.
 import numba as nb
 import numpy as np
 
-from fast_borf.core.sax import breakpoints, get_n_windows, sax, window_fits
+from fast_borf.core.sax import breakpoints, get_n_windows, sax_words, window_fits
 from fast_borf.core.unique import unique
-from fast_borf.core.words import encode_words
 
 
 @nb.njit(cache=True)
@@ -36,63 +35,23 @@ def get_signal(panel, panel_timestamps, ts_idx, signal_idx):
     return signal[is_observed], timestamps[is_observed]
 
 
-@nb.njit(cache=True)
-def signal_words(
-    signal,
-    timestamps,
-    window_size,
-    word_length,
-    alphabet_size,
-    bins,
-    stride=1,
-    dilation=1,
-    min_window_to_signal_std_ratio=0.0,
-):
-    """The SAX word of every window of one signal, as integers."""
-    symbols = sax(
-        signal=signal,
-        timestamps=timestamps,
-        window_size=window_size,
-        word_length=word_length,
-        bins=bins,
-        stride=stride,
-        dilation=dilation,
-        min_window_to_signal_std_ratio=min_window_to_signal_std_ratio,
-    )
-    return encode_words(symbols, alphabet_size)
+@nb.njit(parallel=True, nogil=True, cache=True)
+def count_windows(panel, window_size, stride, dilation):
+    """Number of windows of every signal, and of its observed points.
 
-
-@nb.njit(cache=True)
-def count_signal_words(
-    signal,
-    timestamps,
-    ts_idx,
-    signal_idx,
-    window_size,
-    word_length,
-    alphabet_size,
-    bins,
-    stride=1,
-    dilation=1,
-    min_window_to_signal_std_ratio=0.0,
-):
-    """Rows of (series index, signal index, word, count) for one signal."""
-    words, counts = unique(
-        signal_words(
-            signal,
-            timestamps,
-            window_size,
-            word_length,
-            alphabet_size,
-            bins,
-            stride,
-            dilation,
-            min_window_to_signal_std_ratio,
-        )
-    )
-    ts_idxs = np.full(len(words), ts_idx)
-    signal_idxs = np.full(len(words), signal_idx)
-    return np.column_stack((ts_idxs, signal_idxs, words, counts))
+    Signals are numbered series_index * n_signals + signal_index.
+    """
+    n_signals = len(panel[0])
+    iterations = len(panel) * n_signals
+    n_windows = np.zeros(iterations, dtype=np.int64)
+    n_observed = np.zeros(iterations, dtype=np.int64)
+    for i in nb.prange(iterations):
+        ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
+        size = np.sum(~np.isnan(np.asarray(panel[ts_idx][signal_idx])))
+        n_observed[i] = size
+        if window_fits(window_size, dilation, size):
+            n_windows[i] = get_n_windows(size, window_size, dilation, stride)
+    return n_windows, n_observed
 
 
 @nb.njit(parallel=True, nogil=True, cache=True)
@@ -109,27 +68,30 @@ def transform_sax_patterns(
     """Count the SAX words of every signal.
 
     Returns rows of (series index, signal index, word, count), one per word
-    occurring in a signal.
+    occurring in a signal, ordered by series, signal and word.
     """
     bins = breakpoints(alphabet_size)
     n_signals = len(panel[0])
-    n_ts = len(panel)
-    iterations = n_ts * n_signals
-    # First pass counts the rows of each signal, second pass fills them in.
-    counts = np.zeros(iterations + 1, dtype=np.int64)
+    iterations = len(panel) * n_signals
+    # A signal has at most as many distinct words as windows, so its unique
+    # words and counts fit in buffers of that size; they are compacted after.
+    n_windows, _ = count_windows(panel, window_size, stride, dilation)
+    bound = np.zeros(iterations + 1, dtype=np.int64)
+    bound[1:] = np.cumsum(n_windows)
+    word_buffer = np.empty(bound[-1], dtype=np.int64)
+    count_buffer = np.empty(bound[-1], dtype=np.int64)
+    n_unique = np.zeros(iterations + 1, dtype=np.int64)
     for i in nb.prange(iterations):
+        if n_windows[i] == 0:
+            continue
         ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
         signal, signal_timestamps = get_signal(
             panel, panel_timestamps, ts_idx, signal_idx
         )
-        if not window_fits(window_size, dilation, signal.size):
-            continue
-        counts[i + 1] = len(
-            count_signal_words(
+        words, counts = unique(
+            sax_words(
                 signal,
                 signal_timestamps,
-                ts_idx,
-                signal_idx,
                 window_size,
                 word_length,
                 alphabet_size,
@@ -139,29 +101,44 @@ def transform_sax_patterns(
                 min_window_to_signal_std_ratio,
             )
         )
-    cum_counts = np.cumsum(counts)
-    out = np.empty((cum_counts[-1], 4), dtype=np.int64)
+        order = np.argsort(words)
+        n_unique[i + 1] = len(words)
+        word_buffer[bound[i] : bound[i] + len(words)] = words[order]
+        count_buffer[bound[i] : bound[i] + len(words)] = counts[order]
+    row_offsets = np.cumsum(n_unique)
+    out = np.empty((row_offsets[-1], 4), dtype=np.int64)
     for i in nb.prange(iterations):
-        ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
-        signal, signal_timestamps = get_signal(
-            panel, panel_timestamps, ts_idx, signal_idx
-        )
-        if not window_fits(window_size, dilation, signal.size):
+        start, stop = row_offsets[i], row_offsets[i + 1]
+        if start == stop:
             continue
-        out[cum_counts[i] : cum_counts[i + 1], :] = count_signal_words(
-            signal,
-            signal_timestamps,
-            ts_idx,
-            signal_idx,
-            window_size,
-            word_length,
-            alphabet_size,
-            bins,
-            stride,
-            dilation,
-            min_window_to_signal_std_ratio,
-        )
+        ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
+        out[start:stop, 0] = ts_idx
+        out[start:stop, 1] = signal_idx
+        out[start:stop, 2] = word_buffer[bound[i] : bound[i] + stop - start]
+        out[start:stop, 3] = count_buffer[bound[i] : bound[i] + stop - start]
     return out
+
+
+@nb.njit(cache=True)
+def entries_to_csr(rows, cols, values, n_rows):
+    """CSR arrays (indptr, indices, data) of entries (rows[k], cols[k], values[k]).
+
+    Entries keep their input order within each row, so entries whose columns
+    increase within each row give sorted indices. There must be no duplicates.
+    """
+    indptr = np.zeros(n_rows + 1, dtype=np.int64)
+    for row in rows:
+        indptr[row + 1] += 1
+    indptr = np.cumsum(indptr)
+    next_position = indptr[:-1].copy()
+    indices = np.empty(len(rows), dtype=cols.dtype)
+    data = np.empty(len(rows), dtype=values.dtype)
+    for k in range(len(rows)):
+        position = next_position[rows[k]]
+        indices[position] = cols[k]
+        data[position] = values[k]
+        next_position[rows[k]] += 1
+    return indptr, indices, data
 
 
 @nb.njit(parallel=True, nogil=True, cache=True)
@@ -187,16 +164,11 @@ def panel_words(
     bins = breakpoints(alphabet_size)
     n_signals = len(panel[0])
     iterations = len(panel) * n_signals
-    n_windows = np.zeros(iterations + 1, dtype=np.int64)
-    n_observed = np.zeros(iterations + 1, dtype=np.int64)
-    for i in nb.prange(iterations):
-        ts_idx, signal_idx = ndindex_2d_array(i, n_signals)
-        size = np.sum(~np.isnan(np.asarray(panel[ts_idx][signal_idx])))
-        n_observed[i + 1] = size
-        if window_fits(window_size, dilation, size):
-            n_windows[i + 1] = get_n_windows(size, window_size, dilation, stride)
-    word_offsets = np.cumsum(n_windows)
-    observed_offsets = np.cumsum(n_observed)
+    n_windows, n_observed = count_windows(panel, window_size, stride, dilation)
+    word_offsets = np.zeros(iterations + 1, dtype=np.int64)
+    word_offsets[1:] = np.cumsum(n_windows)
+    observed_offsets = np.zeros(iterations + 1, dtype=np.int64)
+    observed_offsets[1:] = np.cumsum(n_observed)
     words = np.empty(word_offsets[-1], dtype=np.int64)
     observed = np.empty(observed_offsets[-1], dtype=np.int64)
     for i in nb.prange(iterations):
@@ -205,12 +177,12 @@ def panel_words(
         observed[observed_offsets[i] : observed_offsets[i + 1]] = np.nonzero(
             ~np.isnan(raw)
         )[0]
-        if n_windows[i + 1] == 0:
+        if n_windows[i] == 0:
             continue
         signal, signal_timestamps = get_signal(
             panel, panel_timestamps, ts_idx, signal_idx
         )
-        words[word_offsets[i] : word_offsets[i + 1]] = signal_words(
+        words[word_offsets[i] : word_offsets[i + 1]] = sax_words(
             signal,
             signal_timestamps,
             window_size,

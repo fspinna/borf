@@ -4,7 +4,7 @@ For one signal (without missing values) and its timestamps:
 
 - segment_means: z-normalized segment means of every window (the PAA step)
 - breakpoints and discretize: segment means to SAX symbols
-- sax: both steps
+- sax: both steps; sax_words: the same words directly as integers
 - window_positions: the points covered by each segment of each window
 - encode_words and decode_words: SAX words to integers and back
 
@@ -16,6 +16,7 @@ from fast_borf.core.sax import (
     breakpoints,
     discretize,
     sax,
+    sax_words,
     segment_means,
     window_positions,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "encode_words",
     "panel_words",
     "sax",
+    "sax_words",
     "segment_means",
     "transform_sax_patterns",
     "window_positions",

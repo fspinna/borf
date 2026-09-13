@@ -193,6 +193,53 @@ def sax(
 
 
 @nb.njit(cache=True)
+def sax_words(
+    signal,
+    timestamps,
+    window_size,
+    word_length,
+    alphabet_size,
+    bins,
+    stride=1,
+    dilation=1,
+    min_window_to_signal_std_ratio=0.0,
+):
+    """SAX word of every window as an integer, the same as encoding sax()'s symbols.
+
+    The words are built directly from the segment means, without the array
+    of symbols: each symbol is the number of breakpoints at or below the mean
+    (as np.digitize, which also puts NaN after all breakpoints).
+    """
+    if np.std(signal) == 0:
+        n_windows = get_n_windows(signal.size, window_size, dilation, stride)
+        return np.zeros(n_windows, dtype=np.int64)
+    means = segment_means(
+        signal,
+        timestamps,
+        window_size,
+        word_length,
+        stride,
+        dilation,
+        min_window_to_signal_std_ratio,
+    )
+    n_bins = bins.size
+    words = np.empty(means.shape[0], dtype=np.int64)
+    for i in range(means.shape[0]):
+        word = 0
+        for j in range(word_length):
+            value = means[i, j]
+            if np.isnan(value):
+                symbol = n_bins
+            else:
+                symbol = 0
+                while symbol < n_bins and bins[symbol] <= value:
+                    symbol += 1
+            word = word * alphabet_size + symbol
+        words[i] = word
+    return words
+
+
+@nb.njit(cache=True)
 def window_positions(n_windows, window_size, word_length, stride=1, dilation=1):
     """Points covered by each segment of each window.
 

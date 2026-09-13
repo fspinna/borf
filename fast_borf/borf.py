@@ -8,7 +8,7 @@ import scipy.sparse as sp
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.utils.validation import check_is_fitted
 
-from fast_borf.core.transform import transform_sax_patterns
+from fast_borf.core.transform import entries_to_csr, transform_sax_patterns
 from fast_borf.heuristic import Complexity, generate_configs
 
 MAX_KEY = np.iinfo(np.int64).max
@@ -275,10 +275,16 @@ class BORF(TransformerMixin, BaseEstimator):
             offset += len(vocabulary)
         if not rows:
             return sp.csr_matrix((n_series, offset), dtype=np.int64)
-        return sp.csr_matrix(
-            (np.concatenate(counts), (np.concatenate(rows), np.concatenate(cols))),
-            shape=(n_series, offset),
+        # Rows come ordered by series, and within a series by configuration,
+        # signal and word, i.e. by column: the CSR arrays need no sorting.
+        index_dtype = np.int32 if offset < np.iinfo(np.int32).max else np.int64
+        indptr, indices, data = entries_to_csr(
+            np.concatenate(rows),
+            np.concatenate(cols).astype(index_dtype),
+            np.concatenate(counts),
+            n_series,
         )
+        return sp.csr_matrix((data, indices, indptr), shape=(n_series, offset))
 
 
 def n_words(config):
