@@ -66,6 +66,40 @@ def test_evenly_spaced_time_channel_matches_no_time_channel(X):
     assert_same_matrix(with_time, BORF().fit_transform(X))
 
 
+def with_timestamps(X, timestamps):
+    return np.concatenate([X, np.broadcast_to(timestamps, X[:, :1].shape)], axis=1)
+
+
+@pytest.mark.parametrize(
+    "position, value, message",
+    [
+        (20, 19.0, "strictly increasing"),  # repeats the previous timestamp
+        (1, 0.0, "strictly increasing"),
+        (20, 10.0, "strictly increasing"),  # goes back in time
+        (20, np.nan, "missing"),  # the signals have a value there
+    ],
+)
+def test_invalid_timestamps_raise(X, position, value, message):
+    timestamps = np.arange(X.shape[2], dtype=float)
+    timestamps[position] = value
+    with pytest.raises(ValueError, match=message):
+        BORF(time_channel=True).fit(with_timestamps(X, timestamps))
+
+
+def test_invalid_timestamps_raise_for_ragged_input(X_padded):
+    X = with_timestamps(X_padded, np.arange(X_padded.shape[2], dtype=float))
+    X[0, -1, 10] = X[0, -1, 9]
+    with pytest.raises(ValueError, match="strictly increasing"):
+        BORF(time_channel=True).fit(to_ragged(X))
+
+
+def test_nan_timestamps_are_allowed_where_signals_are_missing(X):
+    X = with_timestamps(X, np.arange(X.shape[2], dtype=float))
+    X[:, :, 30] = np.nan  # a gap in every channel, timestamps included
+    X[:, :, 50:] = np.nan  # padding
+    BORF(time_channel=True).fit(X)
+
+
 def test_columns_are_grouped_by_config(X):
     borf = BORF().fit(X)
     X_all = borf.transform(X)

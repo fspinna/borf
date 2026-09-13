@@ -235,7 +235,9 @@ class BORF(TransformerMixin, BaseEstimator):
                     f"got {X.shape}"
                 )
         if self.time_channel:
-            return X[:, :-1], X[:, -1:]
+            signals, timestamps = X[:, :-1], X[:, -1:]
+            check_timestamps(signals, timestamps)
+            return signals, timestamps
         return X, None
 
     def _transform_words(self, signals, timestamps):
@@ -294,6 +296,29 @@ def series_lengths(signals):
         return signals.shape[2], signals.shape[2]
     counts = ak.ravel(ak.count(signals, axis=2))
     return int(ak.min(counts)), int(ak.max(counts))
+
+
+def check_timestamps(signals, timestamps):
+    """Raise if timestamps are missing for observed values or not strictly increasing.
+
+    NaN timestamps are allowed where no signal has a value, e.g. in padding.
+    """
+    if isinstance(signals, ak.Array):
+        length = int(
+            max(ak.max(ak.num(signals, axis=2)), ak.max(ak.num(timestamps, axis=2)))
+        )
+        signals, timestamps = (
+            ak.to_numpy(ak.fill_none(ak.pad_none(a, length, axis=2, clip=True), np.nan))
+            for a in (signals, timestamps)
+        )
+    times = timestamps[:, 0, :]
+    is_observed = ~np.isnan(signals).all(axis=1)
+    if np.any(np.isnan(times) & is_observed):
+        raise ValueError("Timestamps are missing (NaN) where a signal has a value")
+    # Largest earlier timestamp at each position; fmax skips NaN.
+    earlier = np.fmax.accumulate(times, axis=1)[:, :-1]
+    if np.any(times[:, 1:] <= earlier):
+        raise ValueError("Timestamps must be strictly increasing within each series")
 
 
 def slices_from_widths(widths):
