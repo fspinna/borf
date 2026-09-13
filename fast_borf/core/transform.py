@@ -119,6 +119,72 @@ def transform_sax_patterns(
     return out
 
 
+@nb.njit(parallel=True, cache=True)
+def sum_over_channel_groups(rows, n_series, n_signals, members, member_offsets):
+    """Sum word counts over the channels of each group.
+
+    rows are (series index, signal index, word, count), ordered by series,
+    signal and word, as returned by transform_sax_patterns. Group k's
+    channels are members[member_offsets[k] : member_offsets[k + 1]]. Returns
+    rows of (series index, group index, word, summed count), ordered by
+    series, group and word.
+    """
+    n_groups = len(member_offsets) - 1
+    # starts[b] is the first row of signal b = series * n_signals + signal.
+    starts = np.searchsorted(
+        rows[:, 0] * n_signals + rows[:, 1], np.arange(n_series * n_signals + 1)
+    )
+    n_cells = n_series * n_groups
+    # A group has at most as many distinct words as its channels together.
+    bound = np.zeros(n_cells + 1, dtype=np.int64)
+    for cell in nb.prange(n_cells):
+        i, k = ndindex_2d_array(cell, n_groups)
+        for m in range(member_offsets[k], member_offsets[k + 1]):
+            b = i * n_signals + members[m]
+            bound[cell + 1] += starts[b + 1] - starts[b]
+    bound = np.cumsum(bound)
+    word_buffer = np.empty(bound[-1], dtype=np.int64)
+    count_buffer = np.empty(bound[-1], dtype=np.int64)
+    n_unique = np.zeros(n_cells + 1, dtype=np.int64)
+    for cell in nb.prange(n_cells):
+        size = bound[cell + 1] - bound[cell]
+        if size == 0:
+            continue
+        i, k = ndindex_2d_array(cell, n_groups)
+        words = np.empty(size, dtype=np.int64)
+        counts = np.empty(size, dtype=np.int64)
+        filled = 0
+        for m in range(member_offsets[k], member_offsets[k + 1]):
+            b = i * n_signals + members[m]
+            n = starts[b + 1] - starts[b]
+            words[filled : filled + n] = rows[starts[b] : starts[b + 1], 2]
+            counts[filled : filled + n] = rows[starts[b] : starts[b + 1], 3]
+            filled += n
+        order = np.argsort(words, kind="mergesort")
+        start = bound[cell]
+        n_out = 0
+        for q in order:
+            if n_out > 0 and word_buffer[start + n_out - 1] == words[q]:
+                count_buffer[start + n_out - 1] += counts[q]
+            else:
+                word_buffer[start + n_out] = words[q]
+                count_buffer[start + n_out] = counts[q]
+                n_out += 1
+        n_unique[cell + 1] = n_out
+    row_offsets = np.cumsum(n_unique)
+    out = np.empty((row_offsets[-1], 4), dtype=np.int64)
+    for cell in nb.prange(n_cells):
+        start, stop = row_offsets[cell], row_offsets[cell + 1]
+        if start == stop:
+            continue
+        i, k = ndindex_2d_array(cell, n_groups)
+        out[start:stop, 0] = i
+        out[start:stop, 1] = k
+        out[start:stop, 2] = word_buffer[bound[cell] : bound[cell] + stop - start]
+        out[start:stop, 3] = count_buffer[bound[cell] : bound[cell] + stop - start]
+    return out
+
+
 @nb.njit(cache=True)
 def entries_to_csr(rows, cols, values, n_rows):
     """CSR arrays (indptr, indices, data) of entries (rows[k], cols[k], values[k]).

@@ -64,6 +64,10 @@ class BagOfReceptiveFields:
     """
 
     def __init__(self, borf: BORF):
+        if borf.channel_groups_ is not None:
+            raise NotImplementedError(
+                "Explanations of BORF(channel_groups=...) are not supported yet"
+            )
         if np.any(borf.feature_index_[:, 1] < 0):
             raise ValueError(
                 "Some columns were created by block_transformer and do not map "

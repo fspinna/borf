@@ -8,7 +8,11 @@ import scipy.sparse as sp
 from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.utils.validation import check_is_fitted
 
-from fast_borf.core.transform import entries_to_csr, transform_sax_patterns
+from fast_borf.core.transform import (
+    entries_to_csr,
+    sum_over_channel_groups,
+    transform_sax_patterns,
+)
 from fast_borf.heuristic import Complexity, generate_configs
 
 MAX_KEY = np.iinfo(np.int64).max
@@ -44,11 +48,17 @@ class BORF(TransformerMixin, BaseEstimator):
     min_window_to_signal_std_ratio : float, default=0.0
         Windows whose standard deviation is below this fraction of the
         signal's standard deviation are treated as flat (z-score 0).
+    channel_groups : "all" or list of lists of int, optional
+        Count words over groups of channels: a group's count of a word is the
+        sum of its counts in the group's channels (words are still computed
+        per channel). "all" makes a single group of every channel. Channels in
+        no group are ignored; a channel may be in several groups. By default
+        every channel is counted separately.
     vocabulary : {"fit", "full"}, default="fit"
         "fit" keeps a column for each (signal, word) seen during fit. "full"
         keeps every possible word, n_signals * alphabet_size**word_length
-        columns per configuration, so the feature space does not depend on
-        the data.
+        columns per configuration (n_groups * ... with channel_groups), so the
+        feature space does not depend on the data.
     block_transformer : transformer, optional
         Scikit-learn transformer (or pipeline) applied separately to the
         columns of each configuration, for example Normalizer() to normalize
@@ -69,8 +79,10 @@ class BORF(TransformerMixin, BaseEstimator):
     config_slices_ : list of slice
         Output columns of each configuration.
     feature_index_ : ndarray of shape (n_features, 3)
-        (configuration index, signal index, word) of every output column. The
-        word is the SAX word encoded as an integer in base alphabet_size.
+        (configuration index, signal index, word) of every output column, with
+        the group index instead of the signal index when channel_groups is
+        set. The word is the SAX word encoded as an integer in base
+        alphabet_size.
         Columns created by block_transformer, rather than kept or selected
         from its input, have signal and word set to -1. A transformer is taken
         to keep or select columns when it reports feature names, or when it
@@ -84,6 +96,8 @@ class BORF(TransformerMixin, BaseEstimator):
         configurations without columns), or None without block_transformer.
     n_signals_ : int
         Number of signals per series seen during fit.
+    channel_groups_ : list of lists of int or None
+        The channel groups used, or None when channels are counted separately.
 
     Notes
     -----
@@ -103,6 +117,7 @@ class BORF(TransformerMixin, BaseEstimator):
         complexity: Complexity = "quadratic",
         configs: Optional[Sequence[dict]] = None,
         min_window_to_signal_std_ratio: float = 0.0,
+        channel_groups=None,
         vocabulary: Literal["fit", "full"] = "fit",
         block_transformer=None,
         time_channel: bool = False,
@@ -117,6 +132,7 @@ class BORF(TransformerMixin, BaseEstimator):
         self.complexity = complexity
         self.configs = configs
         self.min_window_to_signal_std_ratio = min_window_to_signal_std_ratio
+        self.channel_groups = channel_groups
         self.vocabulary = vocabulary
         self.block_transformer = block_transformer
         self.time_channel = time_channel
@@ -133,6 +149,9 @@ class BORF(TransformerMixin, BaseEstimator):
             )
         signals, timestamps = self._split_time_channel(X)
         self.n_signals_ = len(signals[0])
+        self.channel_groups_ = resolve_channel_groups(
+            self.channel_groups, self.n_signals_
+        )
         self.configs_ = self._get_configs(signals)
 
         words = self._transform_words(signals, timestamps)
@@ -144,7 +163,7 @@ class BORF(TransformerMixin, BaseEstimator):
             ]
         else:
             self.vocabularies_ = [
-                np.arange(self.n_signals_ * n_words(config)) for config in self.configs_
+                np.arange(self._n_units() * n_words(config)) for config in self.configs_
             ]
         counts = self._to_matrix(words, len(signals))
         index = [
@@ -222,9 +241,15 @@ class BORF(TransformerMixin, BaseEstimator):
         if not configs:
             raise ValueError("No configuration fits series of this length")
         for config in configs:
-            if self.n_signals_ * n_words(config) > MAX_KEY:
+            if self._n_units() * n_words(config) > MAX_KEY:
                 raise ValueError(f"Too many possible words for configuration {config}")
         return configs
+
+    def _n_units(self):
+        """Number of signals, or of groups with channel_groups."""
+        if self.channel_groups_ is None:
+            return self.n_signals_
+        return len(self.channel_groups_)
 
     def _split_time_channel(self, X):
         if not isinstance(X, ak.Array):
@@ -241,9 +266,13 @@ class BORF(TransformerMixin, BaseEstimator):
         return X, None
 
     def _transform_words(self, signals, timestamps):
-        """Rows of (series index, signal index, word, count) for each configuration."""
+        """Rows of (series index, signal index, word, count) for each configuration.
+
+        With channel_groups, the signal index is the group index and counts
+        are summed over the group's channels.
+        """
         with numba_threads(self.n_jobs):
-            return [
+            words = [
                 transform_sax_patterns(
                     panel=signals,
                     panel_timestamps=timestamps,
@@ -252,6 +281,16 @@ class BORF(TransformerMixin, BaseEstimator):
                 )
                 for config in self.configs_
             ]
+            if self.channel_groups_ is not None:
+                members = np.concatenate(self.channel_groups_).astype(np.int64)
+                member_offsets = group_offsets(self.channel_groups_)
+                words = [
+                    sum_over_channel_groups(
+                        rows, len(signals), self.n_signals_, members, member_offsets
+                    )
+                    for rows in words
+                ]
+        return words
 
     def _count_slices(self):
         """Columns of each configuration in the count matrix, before block_transformer."""
@@ -333,6 +372,38 @@ def check_timestamps(signals, timestamps):
     earlier = np.fmax.accumulate(times, axis=1)[:, :-1]
     if np.any(times[:, 1:] <= earlier):
         raise ValueError("Timestamps must be strictly increasing within each series")
+
+
+def resolve_channel_groups(channel_groups, n_signals):
+    """channel_groups as a list of lists of channel indices, or None."""
+    if channel_groups is None:
+        return None
+    if isinstance(channel_groups, str):
+        if channel_groups != "all":
+            raise ValueError(
+                f'channel_groups must be "all" or a list of lists, got {channel_groups!r}'
+            )
+        return [list(range(n_signals))]
+    groups = [[int(channel) for channel in group] for group in channel_groups]
+    if not groups:
+        raise ValueError("channel_groups is empty")
+    for group in groups:
+        if not group:
+            raise ValueError("channel_groups contains an empty group")
+        if len(set(group)) != len(group):
+            raise ValueError(f"Group {group} lists a channel twice")
+        if min(group) < 0 or max(group) >= n_signals:
+            raise ValueError(
+                f"Group {group} refers to channels outside 0..{n_signals - 1}"
+            )
+    return groups
+
+
+def group_offsets(groups):
+    """Offsets of each group in the concatenation of all groups."""
+    return np.concatenate([[0], np.cumsum([len(group) for group in groups])]).astype(
+        np.int64
+    )
 
 
 def slices_from_widths(widths):

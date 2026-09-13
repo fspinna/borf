@@ -59,6 +59,7 @@ See [`examples/`](examples) for complete scripts.
 | `complexity` | `"quadratic"` | stride choice: `"quadratic"` (stride 1), `"linear"` (stride = word length) or `"linear_logarithmic"` |
 | `configs` | `None` | explicit list of configurations, instead of the parameters above |
 | `min_window_to_signal_std_ratio` | 0.0 | windows flatter than this fraction of the signal's standard deviation count as flat |
+| `channel_groups` | `None` | `"all"` or e.g. `[[0, 1, 2], [3, 4, 5]]`: count each word summed over the channels of each group (not yet supported by the explanations) |
 | `vocabulary` | `"fit"` | `"fit"`: a column per word seen during fit; `"full"`: every possible word, so the feature space does not depend on the data |
 | `block_transformer` | `None` | scikit-learn transformer applied separately to each configuration's columns |
 | `time_channel` | `False` | the last channel holds timestamps |
@@ -72,7 +73,8 @@ After fitting:
   dilation, stride), in the order of the output columns.
 - `config_slices_[i]`: the output columns of configuration `i`.
 - `feature_index_`: for every output column, its configuration index, signal
-  index and SAX word (as an integer in base `alphabet_size`).
+  index (group index with `channel_groups`) and SAX word (as an integer in
+  base `alphabet_size`).
 
 ## Blockwise processing
 
