@@ -12,6 +12,13 @@ from fast_borf.xai.sax_mapping import wsax_configurations_alignment_conversion
 
 class BagOfReceptiveFields:
     def __init__(self, borf: BORF):
+        if borf.vocabulary != "fit":
+            raise NotImplementedError('Explanations need BORF(vocabulary="fit")')
+        if np.any(borf.feature_index_[:, 1] < 0):
+            raise ValueError(
+                "Some columns were created by block_transformer and do not map "
+                "to a single word, so they cannot be explained"
+            )
         self.borf = borf
         self.mapping = borf.feature_index_  # (conf_idx, signal_idx, word_idx)
         self.contains_time_idx = borf.time_channel
