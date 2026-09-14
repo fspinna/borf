@@ -260,7 +260,9 @@ class BagOfReceptiveFields:
           have mixed signs.
         - "feature": each importance divided by the number of points a window
           covers, i.e. the importance per point if the word occurred once, on
-          the same scale as the saliency with normalize="feature".
+          the same scale as the saliency with normalize="feature". Being per
+          point, it is larger for short windows: to rank absent words, use
+          their importance F_ instead.
         """
         if normalize not in ("map", "feature"):
             raise ValueError(f'normalize must be "map" or "feature", got {normalize!r}')
