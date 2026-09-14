@@ -10,9 +10,10 @@ from fast_borf.borf import BORF, n_words, to_padded_array
 from fast_borf.core.sax import window_positions
 from fast_borf.core.transform import panel_words
 from fast_borf.xai.receptive_field import ReceptiveField
-from fast_borf.xai.saliency import add_window_importance
+from fast_borf.xai.saliency import add_window_importance, feature_coverage
 
 CACHED_CONFIGS = 16
+NORMALIZATIONS = (True, False, "map", "feature")
 
 
 class BagOfReceptiveFields:
@@ -54,11 +55,12 @@ class BagOfReceptiveFields:
         attributes are computed on first access, as they are the slowest.
     S_ : ndarray of shape (n_series, n_signals, n_timestamps)
         Saliency: the importances of the words occurring in each series,
-        spread over the points their windows cover.
+        spread over the points their windows cover, scaled as chosen with
+        map_contained_feature_importance_to_saliency's normalize.
     F_norm_ : ndarray of shape (n_series, n_features)
-        Importances of the words absent from each series, rescaled so that
-        their sum weighted by window size equals their plain sum; NaN for
-        words that occur.
+        Importances of the words absent from each series, rescaled as chosen
+        with map_notcontained_feature_importance's normalize; NaN for words
+        that occur.
     receptive_fields_ : mapping from feature index to ReceptiveField
         Computed when first accessed.
     """
@@ -196,10 +198,27 @@ class BagOfReceptiveFields:
 
         Every window adds its word's importance to the points it covers. With
         count_overlapping=False, a point gets a word's importance once however
-        many of its windows cover it. With normalize=True, each series'
-        saliency is rescaled to sum to the importances of its words.
+        many of its windows cover it.
+
+        normalize sets the scale:
+
+        - True or "map" (default): each series' saliency is rescaled by one
+          factor to sum to the importances of the words it contains. A word's
+          share of the map then grows with its number of occurrences and window
+          size, and when the importances have mixed signs the factor can be
+          close to zero or negative, which inflates or flips the whole map.
+        - "feature": each word's importance is split equally over its
+          occurrences, and each occurrence's share equally over its points, so
+          every word contributes exactly its importance.
+        - False: the sums, without rescaling.
         """
+        if normalize not in NORMALIZATIONS:
+            raise ValueError(
+                f'normalize must be True, False, "map" or "feature", got {normalize!r}'
+            )
         F = np.ascontiguousarray(self.F_, dtype=np.float64)
+        if normalize == "feature":
+            F = self._importance_per_point(F, count_overlapping)
         S = np.zeros(self.X_.shape)
         for config_idx in range(len(self.configs)):
             words = self._config_words(config_idx)
@@ -214,9 +233,10 @@ class BagOfReceptiveFields:
                 self.X_.shape[1],
                 count_overlapping,
             )
-        has_importance = F.sum(axis=1) != 0  # if all feature importance are zero
-        S[~has_importance] = 0
-        if normalize:
+        if normalize != "feature":
+            has_importance = F.sum(axis=1) != 0  # if all feature importance are zero
+            S[~has_importance] = 0
+        if normalize is True or normalize == "map":
             contained = self._counts > 0
             contained_sum = np.asarray(contained.multiply(F).sum(axis=1)).ravel()
             for i in np.flatnonzero(has_importance):
@@ -224,21 +244,72 @@ class BagOfReceptiveFields:
         self.S_ = S
         return self
 
-    def map_notcontained_feature_importance(self):
-        """Rescale the importances of the words absent from each series (F_norm_)."""
+    def map_notcontained_feature_importance(self, normalize="map"):
+        """Rescale the importances of the words absent from each series (F_norm_).
+
+        normalize sets the scale:
+
+        - "map" (default): one factor per series, so that the importances
+          weighted by window size sum to their plain sum. As for the saliency,
+          the factor can be close to zero or negative when the importances
+          have mixed signs.
+        - "feature": each importance divided by the number of points a window
+          covers, i.e. the importance per point if the word occurred once, on
+          the same scale as the saliency with normalize="feature".
+        """
+        if normalize not in ("map", "feature"):
+            raise ValueError(f'normalize must be "map" or "feature", got {normalize!r}')
         F = np.asarray(self.F_, dtype=np.float64)
         absent = ~(self._counts > 0).toarray()
-        window_sizes = np.array([c["window_size"] for c in self.configs])[
-            self.mapping[:, 0]
-        ]
-        F_absent = np.where(absent, F, 0.0)
-        null_features_sum = F_absent.sum(axis=1, keepdims=True)
-        F_sum = (F_absent * window_sizes).sum(axis=1, keepdims=True)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            F_norm = np.where(absent, F * null_features_sum / F_sum, np.nan)
+        if normalize == "feature":
+            with np.errstate(divide="ignore", invalid="ignore"):
+                F_norm = np.where(absent, F / self._points_per_window(), np.nan)
+        else:
+            window_sizes = np.array([c["window_size"] for c in self.configs])[
+                self.mapping[:, 0]
+            ]
+            F_absent = np.where(absent, F, 0.0)
+            null_features_sum = F_absent.sum(axis=1, keepdims=True)
+            F_sum = (F_absent * window_sizes).sum(axis=1, keepdims=True)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                F_norm = np.where(absent, F * null_features_sum / F_sum, np.nan)
         self.F_norm_ = F_norm
         self.receptive_fields_.clear()
         return self
+
+    def _points_per_window(self):
+        """Number of points a window of each feature covers."""
+        points = np.array(
+            [
+                c["word_length"] * (c["window_size"] // c["word_length"])
+                for c in self.configs
+            ]
+        )
+        return points[self.mapping[:, 0]]
+
+    def _importance_per_point(self, F, count_overlapping):
+        """F divided by the number of points each feature covers in each series.
+
+        Features not occurring in a series get 0.
+        """
+        rows, cols, coverage = [], [], []
+        for config_idx in range(len(self.configs)):
+            words = self._config_words(config_idx)
+            r, c, v = feature_coverage(
+                words["columns"],
+                words["word_offsets"],
+                words["observed_offsets"],
+                words["positions"],
+                self.X_.shape[1],
+                count_overlapping,
+            )
+            rows.append(r)
+            cols.append(c)
+            coverage.append(v)
+        rows, cols, coverage = (np.concatenate(a) for a in (rows, cols, coverage))
+        scaled = np.zeros_like(F)
+        scaled[rows, cols] = F[rows, cols] / coverage
+        return scaled
 
     def _config_words(self, config_idx):
         """Words, positions and feature of every window, for one configuration."""

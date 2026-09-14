@@ -12,6 +12,7 @@ import awkward as ak
 import numpy as np
 import pytest
 from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.linear_model import RidgeClassifierCV
 from sklearn.preprocessing import FunctionTransformer
 
 from fast_borf import BORF
@@ -190,3 +191,113 @@ def test_columns_created_by_block_transformer_cannot_be_explained(X):
     total = FunctionTransformer(lambda b: np.asarray(b.sum(axis=1)))
     with pytest.raises(ValueError, match="block_transformer"):
         BagOfReceptiveFields(BORF(block_transformer=total).fit(X))
+
+
+def feature_saliency(explainer, F, count_overlapping):
+    explainer.add_feature_importance(F)
+    return explainer.map_contained_feature_importance_to_saliency(
+        count_overlapping=count_overlapping, normalize="feature"
+    ).S_.copy()
+
+
+@pytest.mark.parametrize("count_overlapping", [True, False])
+def test_feature_normalization_gives_each_word_its_importance(X, F, count_overlapping):
+    explainer = BagOfReceptiveFields(BORF().fit(X)).build(X, task="regression")
+    contained = explainer.X_transformed_.toarray() > 0
+    S = feature_saliency(explainer, F, count_overlapping)
+    np.testing.assert_allclose(S.sum(axis=(1, 2)), (F * contained).sum(axis=1))
+    # Linear in the importances, so every word contributes exactly its own.
+    G = np.random.default_rng(2).standard_normal(F.shape)
+    np.testing.assert_allclose(
+        feature_saliency(explainer, F + G, count_overlapping),
+        S + feature_saliency(explainer, G, count_overlapping),
+        atol=1e-12,
+    )
+    for j in (0, 100, 1000):
+        single = np.zeros_like(F)
+        single[:, j] = F[:, j]
+        np.testing.assert_allclose(
+            feature_saliency(explainer, single, count_overlapping).sum(axis=(1, 2)),
+            F[:, j] * contained[:, j],
+        )
+
+
+@pytest.mark.parametrize("count_overlapping", [True, False])
+def test_feature_normalization_spreads_over_the_receptive_field(X, count_overlapping):
+    explainer = BagOfReceptiveFields(BORF().fit(X)).build(X, task="regression")
+    j = 500
+    single = np.zeros((len(X), len(explainer.mapping)))
+    single[:, j] = 1.0
+    S = feature_saliency(explainer, single, count_overlapping)
+    field = explainer.receptive_fields_[j]
+    for i, indices in enumerate(field.alignments_indices):
+        expected = np.zeros(X.shape[2])
+        if len(indices):
+            if count_overlapping:  # points weighted by the windows covering them
+                expected = np.bincount(indices.ravel(), minlength=X.shape[2])
+            else:  # each covered point once
+                expected[np.unique(indices)] = 1
+            expected = expected / expected.sum()
+        np.testing.assert_allclose(S[i, field.signal_idx], expected, atol=1e-12)
+
+
+def test_feature_normalization_of_absent_words(X, F):
+    explainer = BagOfReceptiveFields(BORF().fit(X)).build(X, task="regression")
+    explainer.add_feature_importance(F).map_notcontained_feature_importance(
+        normalize="feature"
+    )
+    absent = explainer.X_transformed_.toarray() == 0
+    window = np.array([c["window_size"] for c in explainer.configs])[
+        explainer.mapping[:, 0]
+    ]
+    np.testing.assert_allclose(explainer.F_norm_[absent], (F / window)[absent])
+    assert np.isnan(explainer.F_norm_[~absent]).all()
+
+
+def test_invalid_normalization_raises(X, F):
+    explainer = BagOfReceptiveFields(BORF().fit(X)).build(X, task="regression")
+    explainer.add_feature_importance(F)
+    with pytest.raises(ValueError, match="normalize"):
+        explainer.map_contained_feature_importance_to_saliency(normalize="series")
+    with pytest.raises(ValueError, match="normalize"):
+        explainer.map_notcontained_feature_importance(normalize=True)
+
+
+def test_feature_normalization_finds_a_planted_pattern():
+    # Random walks with a bump (class 0) or a dip (class 1) at a random place:
+    # the saliency toward the predicted class should peak on the pattern.
+    def make(n_series, seed, length=150, width=20):
+        rng = np.random.default_rng(seed)
+        y = rng.integers(0, 2, n_series)
+        X = 0.3 * rng.standard_normal((n_series, 1, length)).cumsum(axis=2)
+        starts = rng.integers(0, length - width, n_series)
+        bump = 3 * np.sin(np.linspace(0, np.pi, width))
+        for i in range(n_series):
+            X[i, 0, starts[i] : starts[i] + width] += bump if y[i] == 0 else -bump
+        return X, y, starts
+
+    X_train, y_train, _ = make(300, seed=0)
+    X_test, y_test, starts = make(100, seed=1)
+    borf = BORF().fit(X_train)
+    Z_train = np.arcsinh(borf.transform(X_train).toarray())
+    Z_test = np.arcsinh(borf.transform(X_test).toarray())
+    model = RidgeClassifierCV().fit(Z_train, y_train)
+    # Linear contributions toward class 1, as SHAP's LinearExplainer computes
+    # with the whole training set as background.
+    F = (Z_test - Z_train.mean(axis=0)) * np.ravel(model.coef_)
+    explainer = BagOfReceptiveFields(borf).build(
+        X_test, y_test, model.predict(Z_test), task="classification"
+    )
+    explainer.add_feature_importance(F)
+
+    def peaks_on_pattern(normalize):
+        S = explainer.map_contained_feature_importance_to_saliency(
+            normalize=normalize
+        ).S_
+        peak = S[:, 0].argmax(axis=1)
+        return np.mean((starts <= peak) & (peak < starts + 20))
+
+    # The pattern covers 13% of each series; about 62% of the peaks land on it
+    # with normalize="feature", 29% with normalize="map".
+    assert peaks_on_pattern("feature") > 0.5
+    assert peaks_on_pattern("feature") > peaks_on_pattern("map") + 0.2
