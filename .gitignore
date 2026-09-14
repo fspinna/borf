@@ -1,5 +1,6 @@
 # Research material stays out of the repo; only the curated notebooks/ are tracked
 /evaluation/
+/notebooks-local/
 *.ipynb
 !/notebooks/*.ipynb
 .ipynb_checkpoints/
