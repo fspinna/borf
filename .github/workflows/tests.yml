@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.name }} (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: oldest versions
+            python: "3.10"
+            pins: >-
+              numpy==1.26.4 numba==0.60.0 scipy==1.13.1 scikit-learn==1.6.1
+              awkward==2.6.10
+          - name: latest versions
+            python: "3.13"
+            pins: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: pip install ".[test]" ${{ matrix.pins }}
+      - name: Run tests
+        run: pytest
+      - name: Run examples
+        # Run from the examples folder so they use the installed package.
+        working-directory: examples
+        run: for f in *.py; do echo "== $f"; python "$f"; done
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1

@@ -1,1 +1,5 @@
-from fast_borf.classes.bag_of_receptive_fields_sax.borf_multi import BorfPipelineBuilder as BorfBuilder
+"""Bag-Of-Receptive-Fields (BORF) for regular and irregular time series."""
+
+from fast_borf.borf import BORF
+
+__all__ = ["BORF"]

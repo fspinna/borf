@@ -1,0 +1,13 @@
+{
+ "commit": "2d35d3b",
+ "cases": {
+  "irregular": {
+   "time_channel": true,
+   "n_classes": 2
+  },
+  "regular_multivariate": {
+   "time_channel": false,
+   "n_classes": 3
+  }
+ }
+}

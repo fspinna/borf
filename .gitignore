@@ -1,0 +1,27 @@
+# Research material stays out of the repo
+/evaluation/
+/notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# Python, numba cache and packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Test and tool caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
