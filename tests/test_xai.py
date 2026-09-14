@@ -60,9 +60,15 @@ def test_explanation_matches_reference(reference, count_overlapping):
     np.testing.assert_allclose(
         explainer.F_norm_, expected["F_norm"], rtol=1e-12, atol=1e-12
     )
+    # The same ranking up to the order of ties, which the reference (default
+    # np.argsort) broke differently from platform to platform.
+    avg_rank = explainer.F_avg_rank_
     np.testing.assert_array_equal(
-        explainer.F_avg_rank_argsort_, expected["F_avg_rank_argsort"]
+        avg_rank[explainer.F_avg_rank_argsort_],
+        avg_rank[expected["F_avg_rank_argsort"]],
     )
+    ties = np.diff(avg_rank[explainer.F_avg_rank_argsort_]) == 0
+    assert np.all(np.diff(explainer.F_avg_rank_argsort_)[ties] > 0)
 
 
 def test_receptive_fields_match_reference(reference):

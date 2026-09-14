@@ -157,8 +157,9 @@ class BagOfReceptiveFields:
         self.F_sum_ = np.abs(self.F_).sum(
             axis=0
         )  # sum of abs importance (global importance across instances)
+        # Stable sorts order ties by feature index, the same on every platform.
         self.F_sum_argsort_ = np.argsort(
-            -self.F_sum_
+            -self.F_sum_, kind="stable"
         )  # feature idxs sorted by global abs sum
         self._ranks = {}  # the rank attributes below are computed on first access
         self.receptive_fields_.clear()
@@ -174,7 +175,9 @@ class BagOfReceptiveFields:
     @property
     def F_argsort_(self):
         """For each series, features sorted by absolute importance."""
-        return self._rank("argsort", lambda: np.argsort(-np.abs(self.F_), axis=1))
+        return self._rank(
+            "argsort", lambda: np.argsort(-np.abs(self.F_), axis=1, kind="stable")
+        )
 
     @property
     def F_rank_(self):
@@ -189,7 +192,9 @@ class BagOfReceptiveFields:
     @property
     def F_avg_rank_argsort_(self):
         """Features sorted by average rank, most important first."""
-        return self._rank("avg_rank_argsort", lambda: np.argsort(self.F_avg_rank_))
+        return self._rank(
+            "avg_rank_argsort", lambda: np.argsort(self.F_avg_rank_, kind="stable")
+        )
 
     def map_contained_feature_importance_to_saliency(
         self, count_overlapping=True, normalize=True
