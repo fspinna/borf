@@ -1,7 +1,7 @@
-# Research material stays out of the repo
+# Research material stays out of the repo; only the curated notebooks/ are tracked
 /evaluation/
-/notebooks/
 *.ipynb
+!/notebooks/*.ipynb
 .ipynb_checkpoints/
 
 # Python, numba cache and packaging

@@ -18,6 +18,14 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+notebooks = [
+    "aeon>=1.0",
+    "jupyter",
+    "matplotlib>=3.9",
+    "pyrregular>=0.1.10",
+    "seaborn>=0.13",
+    "shap>=0.48",
+]
 dev = ["fast-borf[test]", "pre-commit"]
 
 [project.urls]

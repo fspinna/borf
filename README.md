@@ -41,7 +41,11 @@ model = make_pipeline(BORF(n_jobs=-1), RidgeClassifierCV())
 model.fit(X, y)
 ```
 
-See [`examples/`](examples) for complete scripts.
+See [`examples/`](examples) for complete scripts, and
+[`notebooks/classification_tutorial.ipynb`](notebooks/classification_tutorial.ipynb)
+for a step-by-step walkthrough of the process, classification and
+explanations, on regular and irregular series (install with the `notebooks`
+extra to run it).
 
 ## Input formats
 
