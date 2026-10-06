@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fast-borf"
-version = "0.2.0"
+version = "0.2.1"
 license = "MIT"
 license-files = ["LICENSE"]
 description = "Bag-Of-Receptive-Fields (BORF) features for regular and irregular time series"
