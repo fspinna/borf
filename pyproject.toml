@@ -10,6 +10,26 @@ license-files = ["LICENSE"]
 description = "Bag-Of-Receptive-Fields (BORF) features for regular and irregular time series"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Francesco Spinnato" }]
+keywords = [
+    "time series",
+    "time series classification",
+    "irregular time series",
+    "explainable AI",
+    "interpretability",
+    "SAX",
+    "bag of words",
+    "scikit-learn",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
 dependencies = [
     "awkward>=2.6",
     "numba>=0.60",
@@ -32,6 +52,9 @@ dev = ["fast-borf[test]", "pre-commit"]
 
 [project.urls]
 Repository = "https://github.com/fspinna/borf"
+Paper = "https://doi.org/10.1109/ACCESS.2024.3464743"
+"Paper (irregular time series)" = "https://arxiv.org/abs/2609.39268"
+Issues = "https://github.com/fspinna/borf/issues"
 
 [tool.setuptools.packages.find]
 include = ["fast_borf*"]

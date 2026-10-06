@@ -1,24 +1,34 @@
 # fast-borf
 
-Bag-Of-Receptive-Fields (BORF) turns time series into sparse bag-of-words
-features. Each signal is cut into sliding windows at many window sizes, word
-lengths and dilations, every window becomes a SAX word, and the output counts
-how often each word occurs. The features are meant for linear models and can
-be mapped back to the parts of the series they come from.
+[![PyPI](https://img.shields.io/pypi/v/fast-borf)](https://pypi.org/project/fast-borf/)
+[![Tests](https://github.com/fspinna/borf/actions/workflows/tests.yml/badge.svg)](https://github.com/fspinna/borf/actions/workflows/tests.yml)
+[![IEEE Access](https://img.shields.io/badge/IEEE%20Access-10.1109%2FACCESS.2024.3464743-blue)](https://doi.org/10.1109/ACCESS.2024.3464743)
+[![arXiv](https://img.shields.io/badge/arXiv-2609.39268-b31b1b)](https://arxiv.org/abs/2609.39268)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+Official implementation of **Bag-Of-Receptive-Fields (BORF)**, from the papers
+[*Fast, Interpretable, and Deterministic Time Series Classification With a
+Bag-of-Receptive-Fields*](https://doi.org/10.1109/ACCESS.2024.3464743) (IEEE
+Access, 2024) and [*A Time-Aware Bag-of-Receptive-Fields for Interpretable
+Irregular Time Series Classification*](https://arxiv.org/abs/2609.39268)
+(arXiv, 2026).
+
+BORF turns time series into sparse bag-of-words features. Each signal is cut
+into sliding windows at many window sizes, word lengths and dilations, every
+window becomes a SAX word, and the output counts how often each word occurs.
+The features are meant for linear models and can be mapped back to the parts
+of the series they come from.
 
 BORF handles univariate and multivariate series, variable lengths, missing
-values and irregular sampling, and is a scikit-learn transformer.
-
-BORF is now available in the aeon library!
-
-https://www.aeon-toolkit.org/en/stable/api_reference/auto_generated/aeon.transformations.collection.dictionary_based.BORF.html
-
-For a more customizable estimator and for XAI, continue below.
+values and irregular sampling, and is a scikit-learn transformer. Compared
+with the [aeon](#borf-in-aeon) version, this package adds explanations
+(saliency maps and receptive fields), irregularly sampled series, channel
+groups, blockwise transformers and a fixed vocabulary option.
 
 ## Installation
 
 ```bash
-pip install "git+https://github.com/fspinna/borf"
+pip install fast-borf
 ```
 
 The original implementation for regularly sampled series is available as
@@ -127,6 +137,12 @@ underlying steps (`segment_means`, `discretize`, `window_positions`,
 `panel_words`) for custom analyses and plots. See
 [`examples/explanation.py`](examples/explanation.py).
 
+## BORF in aeon
+
+A BORF transformer for regularly sampled series is also available in the
+[aeon](https://www.aeon-toolkit.org/en/stable/api_reference/auto_generated/aeon.transformations.collection.dictionary_based.BORF.html)
+toolkit.
+
 ## Development
 
 ```bash
@@ -137,3 +153,33 @@ pytest
 
 The tests in `tests/test_reference.py` compare against outputs saved from the
 original implementation, so refactoring cannot silently change the features.
+
+## Citation
+
+If you use BORF, please cite:
+
+```bibtex
+@article{spinnato2024borf,
+  title   = {Fast, Interpretable, and Deterministic Time Series Classification With a Bag-of-Receptive-Fields},
+  author  = {Spinnato, Francesco and Guidotti, Riccardo and Monreale, Anna and Nanni, Mirco},
+  journal = {IEEE Access},
+  volume  = {12},
+  pages   = {137893--137912},
+  year    = {2024},
+  doi     = {10.1109/ACCESS.2024.3464743}
+}
+```
+
+For irregularly sampled series (`time_channel=True`), please also cite:
+
+```bibtex
+@misc{spinnato2026timeawareborf,
+  title         = {A Time-Aware Bag-of-Receptive-Fields for Interpretable Irregular Time Series Classification},
+  author        = {Spinnato, Francesco},
+  year          = {2026},
+  eprint        = {2609.39268},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2609.39268}
+}
+```

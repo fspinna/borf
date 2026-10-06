@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "fast-borf: Bag-Of-Receptive-Fields for regular and irregular time series"
+authors:
+  - family-names: Spinnato
+    given-names: Francesco
+license: MIT
+repository-code: "https://github.com/fspinna/borf"
+keywords:
+  - time series classification
+  - explainable AI
+  - irregular time series
+  - SAX
+  - bag of words
+preferred-citation:
+  type: article
+  title: "Fast, Interpretable, and Deterministic Time Series Classification With a Bag-of-Receptive-Fields"
+  authors:
+    - family-names: Spinnato
+      given-names: Francesco
+    - family-names: Guidotti
+      given-names: Riccardo
+    - family-names: Monreale
+      given-names: Anna
+    - family-names: Nanni
+      given-names: Mirco
+  journal: "IEEE Access"
+  volume: 12
+  start: 137893
+  end: 137912
+  year: 2024
+  doi: "10.1109/ACCESS.2024.3464743"
+references:
+  - type: article
+    title: "A Time-Aware Bag-of-Receptive-Fields for Interpretable Irregular Time Series Classification"
+    authors:
+      - family-names: Spinnato
+        given-names: Francesco
+    year: 2026
+    identifiers:
+      - type: other
+        value: "arXiv:2609.39268"
+    url: "https://arxiv.org/abs/2609.39268"
